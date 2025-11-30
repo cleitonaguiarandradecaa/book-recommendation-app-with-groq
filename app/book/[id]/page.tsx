@@ -7,6 +7,7 @@ import Link from "next/link"
 import { useParams } from "next/navigation"
 import { useAuth } from "@/contexts/auth-context"
 import type { Recommendation } from "@/lib/auth"
+import { toast } from "@/hooks/use-toast"
 
 // Recomendaciones mock (mesmas da página de recomendações)
 const MOCK_RECOMMENDATIONS: Recommendation[] = [
@@ -52,10 +53,11 @@ interface BookDetails extends Recommendation {
 export default function BookDetailPage() {
   const params = useParams()
   const bookId = params?.id as string
-  const { recommendations } = useAuth()
+  const { recommendations, addToReadingPlan, isInReadingPlan } = useAuth()
   const [book, setBook] = useState<BookDetails | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [isInPlan, setIsInPlan] = useState(false)
 
   useEffect(() => {
     const loadBookDetails = async () => {
@@ -128,7 +130,12 @@ export default function BookDetailPage() {
     }
 
     loadBookDetails()
-  }, [bookId, recommendations])
+    
+    // Verificar se o livro está no plano
+    if (bookId) {
+      setIsInPlan(isInReadingPlan(bookId))
+    }
+  }, [bookId, recommendations, isInReadingPlan])
 
   if (loading) {
     return (
@@ -265,11 +272,34 @@ export default function BookDetailPage() {
       </main>
 
       {/* Fixed Actions */}
-      <div className="border-t bg-background p-4">
+      <div className="border-t bg-background p-4 pb-24">
         <div className="mx-auto flex max-w-2xl gap-3">
-          <Button variant="outline" size="lg" className="flex-1 rounded-full bg-transparent">
+          <Button 
+            variant={isInPlan ? "default" : "outline"} 
+            size="lg" 
+            className={`flex-1 rounded-full ${isInPlan ? "" : "bg-transparent"}`}
+            onClick={() => {
+              if (!isInPlan && book) {
+                const added = addToReadingPlan(book)
+                if (added) {
+                  setIsInPlan(true)
+                  toast({
+                    title: "Libro agregado",
+                    description: `${book.title} ha sido agregado a tu plan de lectura`,
+                  })
+                } else {
+                  toast({
+                    title: "Error",
+                    description: "No se pudo agregar el libro al plan",
+                    variant: "destructive",
+                  })
+                }
+              }
+            }}
+            disabled={isInPlan}
+          >
             <BookmarkPlus className="mr-2 h-5 w-5" strokeWidth={1.5} />
-            Agregar a mi plan
+            {isInPlan ? "Agregado a su plan" : "Agregar a mi plan"}
           </Button>
           {book.buyLink ? (
             <Button 

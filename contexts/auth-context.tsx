@@ -12,6 +12,7 @@ import {
   UserData,
   OnboardingData,
   Recommendation,
+  ReadingPlan,
   getUserData,
   saveUserData,
   saveOnboardingData,
@@ -20,12 +21,18 @@ import {
   hasCompletedOnboarding,
   getUserRecommendations,
   addRecommendationToUser,
+  getReadingPlans,
+  addBookToReadingPlan,
+  isBookInReadingPlan,
+  updateReadingPlan,
+  updatePlanStep,
 } from "@/lib/auth";
 
 interface AuthContextType {
   user: User | null;
   onboarding: OnboardingData | null;
   recommendations: Recommendation[];
+  readingPlans: ReadingPlan[];
   isLoading: boolean;
   isAuthenticated: boolean;
   onboardingComplete: boolean;
@@ -35,6 +42,9 @@ interface AuthContextType {
   updateOnboarding: (data: OnboardingData) => void;
   addRecommendation: (book: Recommendation) => boolean;
   refreshRecommendations: () => void;
+  addToReadingPlan: (book: Recommendation) => boolean;
+  isInReadingPlan: (bookId: string) => boolean;
+  refreshReadingPlans: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -43,6 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [onboarding, setOnboarding] = useState<OnboardingData | null>(null);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
+  const [readingPlans, setReadingPlans] = useState<ReadingPlan[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
 
@@ -62,6 +73,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(userData.user);
       setOnboarding(userData.onboarding);
       setRecommendations(userData.recommendations || []);
+      const plans = getReadingPlans();
+      setReadingPlans(plans);
     }
     setIsLoading(false);
   }, []);
@@ -118,11 +131,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loadRecommendations();
   };
 
+  const addToReadingPlan = (book: Recommendation): boolean => {
+    const added = addBookToReadingPlan(book);
+    if (added) {
+      const plans = getReadingPlans();
+      setReadingPlans(plans);
+    }
+    return added;
+  };
+
+  const isInReadingPlan = (bookId: string): boolean => {
+    return isBookInReadingPlan(bookId);
+  };
+
+  const refreshReadingPlans = () => {
+    const plans = getReadingPlans();
+    setReadingPlans(plans);
+  };
+
   // Evitar problemas de hidratação retornando valores consistentes no primeiro render
   const value = {
     user: mounted ? user : null,
     onboarding: mounted ? onboarding : null,
     recommendations: mounted ? recommendations : [],
+    readingPlans: mounted ? readingPlans : [],
     isLoading: !mounted || isLoading,
     isAuthenticated: mounted && user !== null,
     onboardingComplete: mounted && onboarding !== null,
@@ -132,6 +164,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     updateOnboarding,
     addRecommendation,
     refreshRecommendations,
+    addToReadingPlan,
+    isInReadingPlan,
+    refreshReadingPlans,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

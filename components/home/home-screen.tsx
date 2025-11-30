@@ -148,36 +148,6 @@ export function HomeScreen() {
         </div>
       </main>
 
-      {/* Bottom Navigation */}
-      <nav className="border-t bg-background">
-        <div className="grid grid-cols-4 gap-1 p-2">
-          <button className="flex flex-col items-center gap-1 rounded-xl py-3 bg-primary/10 text-primary">
-            <BookOpen className="h-6 w-6" strokeWidth={1.5} />
-            <span className="text-xs font-medium">Inicio</span>
-          </button>
-          <Link
-            href="/chat"
-            className="flex flex-col items-center gap-1 rounded-xl py-3 text-muted-foreground hover:bg-muted transition-colors"
-          >
-            <MessageSquare className="h-6 w-6" strokeWidth={1.5} />
-            <span className="text-xs font-medium">Chat</span>
-          </Link>
-          <Link
-            href="/reading-plan"
-            className="flex flex-col items-center gap-1 rounded-xl py-3 text-muted-foreground hover:bg-muted transition-colors"
-          >
-            <Target className="h-6 w-6" strokeWidth={1.5} />
-            <span className="text-xs font-medium">Plan</span>
-          </Link>
-          <Link
-            href="/profile"
-            className="flex flex-col items-center gap-1 rounded-xl py-3 text-muted-foreground hover:bg-muted transition-colors"
-          >
-            <User className="h-6 w-6" strokeWidth={1.5} />
-            <span className="text-xs font-medium">Perfil</span>
-          </Link>
-        </div>
-      </nav>
     </div>
   )
 }

@@ -4,6 +4,7 @@ import { Inter } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import { Toaster } from "@/components/ui/toaster"
 import { AuthProvider } from "@/contexts/auth-context"
+import { BottomNavigation } from "@/components/bottom-navigation"
 import "./globals.css"
 
 const inter = Inter({
@@ -47,7 +48,10 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         <AuthProvider>
-          {children}
+          <div className="pb-24">
+            {children}
+          </div>
+          <BottomNavigation />
           <Toaster />
           <Analytics />
         </AuthProvider>
