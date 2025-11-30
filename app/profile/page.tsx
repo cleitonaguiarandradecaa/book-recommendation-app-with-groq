@@ -1,6 +1,10 @@
+"use client"
+
 import { Button } from "@/components/ui/button"
-import { ChevronLeft, Edit3, BookOpen, Target, Heart, Settings, ChevronRight } from "lucide-react"
+import { ChevronLeft, Edit3, BookOpen, Target, Heart, Settings, ChevronRight, LogOut } from "lucide-react"
 import Link from "next/link"
+import { useAuth } from "@/contexts/auth-context"
+import { useRouter } from "next/navigation"
 
 const stats = [
   { label: "Libros leídos", value: "47", icon: BookOpen, color: "text-primary" },
@@ -17,6 +21,16 @@ const preferences = [
 ]
 
 export default function ProfilePage() {
+  const { user, onboarding, logout } = useAuth()
+  const router = useRouter()
+  const userName = user?.name || "Usuario"
+  const userInitial = userName.charAt(0).toUpperCase()
+
+  const handleLogout = () => {
+    logout()
+    router.push("/login")
+  }
+
   return (
     <div className="flex min-h-screen flex-col bg-background">
       {/* Header */}
@@ -43,10 +57,10 @@ export default function ProfilePage() {
           <div className="relative overflow-hidden bg-gradient-to-br from-primary/10 to-success/10 px-6 py-12">
             <div className="text-center">
               <div className="mx-auto mb-4 flex h-24 w-24 items-center justify-center rounded-full bg-primary text-primary-foreground text-3xl font-semibold shadow-lg">
-                A
+                {userInitial}
               </div>
-              <h2 className="text-2xl font-bold">Ana García</h2>
-              <p className="mt-1 text-muted-foreground">Lectora desde 2020</p>
+              <h2 className="text-2xl font-bold">{userName}</h2>
+              <p className="mt-1 text-muted-foreground">{user?.email}</p>
               <div className="mt-4">
                 <Button variant="outline" size="sm" className="rounded-full bg-transparent">
                   <Edit3 className="mr-2 h-4 w-4" strokeWidth={1.5} />
@@ -98,19 +112,43 @@ export default function ProfilePage() {
             <div className="space-y-3 rounded-2xl bg-card p-5 shadow-sm">
               <h3 className="font-semibold">Información de Lectura</h3>
               <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Tiempo disponible</span>
-                  <span className="text-sm font-medium">30 min/día</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Nivel de lectura</span>
-                  <span className="text-sm font-medium">Intermedio</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Libros este año</span>
-                  <span className="text-sm font-medium">18 libros</span>
-                </div>
+                {onboarding ? (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Tiempo disponible</span>
+                      <span className="text-sm font-medium">{onboarding.readingTime} min/día</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Nivel de lectura</span>
+                      <span className="text-sm font-medium">
+                        {onboarding.readerLevel === "beginner"
+                          ? "Principiante"
+                          : onboarding.readerLevel === "intermediate"
+                            ? "Intermedio"
+                            : "Avanzado"}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Géneros favoritos</span>
+                      <span className="text-sm font-medium">{onboarding.interests.length} géneros</span>
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Completa el onboarding para ver tu información</p>
+                )}
               </div>
+            </div>
+
+            {/* Logout */}
+            <div className="pt-4">
+              <Button
+                variant="outline"
+                className="w-full rounded-full bg-transparent text-destructive hover:bg-destructive/10 hover:text-destructive"
+                onClick={handleLogout}
+              >
+                <LogOut className="mr-2 h-4 w-4" strokeWidth={1.5} />
+                Cerrar sesión
+              </Button>
             </div>
 
             {/* Saved Books */}

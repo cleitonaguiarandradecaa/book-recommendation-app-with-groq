@@ -1,8 +1,13 @@
 "use client"
 import { BookOpen, MessageSquare, Target, User, Sparkles, TrendingUp } from "lucide-react"
 import Link from "next/link"
+import { useAuth } from "@/contexts/auth-context"
 
 export function HomeScreen() {
+  const { user } = useAuth()
+  const userName = user?.name || "Usuario"
+  const greeting = `¡Buen día, ${userName.split(" ")[0]}!`
+
   return (
     <div className="flex min-h-screen flex-col bg-background">
       {/* Header */}
@@ -10,7 +15,7 @@ export function HomeScreen() {
         <div className="flex items-center justify-between px-6 py-4">
           <div>
             <h1 className="text-xl font-semibold">Lector</h1>
-            <p className="text-sm text-muted-foreground">¡Buen día, Ana!</p>
+            <p className="text-sm text-muted-foreground">{greeting}</p>
           </div>
           <Link href="/profile">
             <button className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 hover:bg-primary/20 transition-colors">

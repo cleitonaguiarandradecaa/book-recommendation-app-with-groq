@@ -7,6 +7,7 @@ import { ChevronLeft } from "lucide-react"
 interface InterestsScreenProps {
   onNext: () => void
   onBack: () => void
+  onInterestsChange?: (interests: string[]) => void
 }
 
 const interests = [
@@ -24,11 +25,15 @@ const interests = [
   { id: "adventure", label: "Aventura", emoji: "🗺️" },
 ]
 
-export function InterestsScreen({ onNext, onBack }: InterestsScreenProps) {
+export function InterestsScreen({ onNext, onBack, onInterestsChange }: InterestsScreenProps) {
   const [selectedInterests, setSelectedInterests] = useState<string[]>([])
 
   const toggleInterest = (id: string) => {
-    setSelectedInterests((prev) => (prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]))
+    const newInterests = selectedInterests.includes(id)
+      ? selectedInterests.filter((i) => i !== id)
+      : [...selectedInterests, id]
+    setSelectedInterests(newInterests)
+    onInterestsChange?.(newInterests)
   }
 
   return (
@@ -80,7 +85,11 @@ export function InterestsScreen({ onNext, onBack }: InterestsScreenProps) {
       <div className="border-t bg-background p-6">
         <div className="mx-auto max-w-md">
           <Button
-            onClick={onNext}
+            onClick={() => {
+              // Garantir que os interesses sejam salvos antes de avançar
+              onInterestsChange?.(selectedInterests)
+              onNext()
+            }}
             disabled={selectedInterests.length === 0}
             size="lg"
             className="w-full rounded-full text-base font-medium"

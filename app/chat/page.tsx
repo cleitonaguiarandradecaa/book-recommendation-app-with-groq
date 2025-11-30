@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   ChevronLeft,
@@ -16,6 +16,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/auth-context";
+import { useRouter } from "next/navigation";
 
 interface Book {
   id: string;
@@ -40,20 +42,58 @@ interface Message {
   content: string;
   timestamp: Date;
   books?: Book[];
+  searchTerms?: string; // Termos de busca usados para esta mensagem
+  hasMoreBooks?: boolean; // Se há mais livros disponíveis
+  nextStartIndex?: number; // Próximo índice para carregar mais
 }
 
 export default function ChatPage() {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "1",
-      role: "assistant",
-      content:
-        "¡Hola! Soy tu asistente literario. Puedo ayudarte a encontrar el libro perfecto, crear un plan de lectura o responder cualquier pregunta sobre libros. ¿En qué te puedo ayudar hoy?",
-      timestamp: new Date(),
-    },
-  ]);
+  const { isAuthenticated, onboarding, isLoading: authLoading } = useAuth();
+  const router = useRouter();
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingMoreBooks, setLoadingMoreBooks] = useState<string | null>(null); // ID da mensagem que está carregando mais livros
+
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      router.push("/login");
+      return;
+    }
+
+    // Inicializar mensagem com contexto personalizado
+    if (isAuthenticated && onboarding) {
+      const interestsText = onboarding.interests.join(", ");
+      const levelText =
+        onboarding.readerLevel === "beginner"
+          ? "principiante"
+          : onboarding.readerLevel === "intermediate"
+          ? "intermedio"
+          : "avanzado";
+
+      console.log("Chat: Carregando dados de onboarding", onboarding);
+
+      setMessages([
+        {
+          id: "1",
+          role: "assistant",
+          content: `¡Hola! Soy tu asistente literario. Veo que te gustan los géneros: ${interestsText}, tienes ${onboarding.readingTime} minutos al día para leer y tu nivel es ${levelText}. Puedo ayudarte a encontrar el libro perfecto basado en tus preferencias. ¿En qué te puedo ayudar hoy?`,
+          timestamp: new Date(),
+        },
+      ]);
+    } else if (isAuthenticated) {
+      console.log("Chat: Usuário autenticado mas sem dados de onboarding");
+      setMessages([
+        {
+          id: "1",
+          role: "assistant",
+          content:
+            "¡Hola! Soy tu asistente literario. Puedo ayudarte a encontrar el libro perfecto, crear un plan de lectura o responder cualquier pregunta sobre libros. ¿En qué te puedo ayudar hoy?",
+          timestamp: new Date(),
+        },
+      ]);
+    }
+  }, [isAuthenticated, onboarding, authLoading, router]);
 
   const quickActions = [
     { icon: BookOpen, label: "Recomendar un libro", color: "text-primary" },
@@ -82,6 +122,8 @@ export default function ChatPage() {
     setIsLoading(true);
 
     try {
+      console.log("Chat: Enviando mensagem com onboarding", onboarding);
+
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: {
@@ -95,6 +137,7 @@ export default function ChatPage() {
             })),
             { role: "user", content },
           ],
+          onboarding: onboarding || undefined,
         }),
       });
 
@@ -110,6 +153,9 @@ export default function ChatPage() {
         content: data.reply ?? "No pude generar una respuesta en este momento.",
         timestamp: new Date(),
         books: data.books || [],
+        searchTerms: data.searchTerms, // Termos de busca usados
+        hasMoreBooks: data.hasMoreBooks, // Se há mais livros
+        nextStartIndex: data.nextStartIndex, // Próximo índice
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
@@ -286,6 +332,67 @@ export default function ChatPage() {
                       </div>
                     </div>
                   ))}
+
+                  {/* Botão para carregar mais livros */}
+                  {message.hasMoreBooks && message.searchTerms && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full mt-2"
+                      disabled={loadingMoreBooks === message.id}
+                      onClick={async () => {
+                        setLoadingMoreBooks(message.id);
+                        try {
+                          const res = await fetch("/api/books/load-more", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                              searchTerms: message.searchTerms,
+                              startIndex: message.nextStartIndex || 5,
+                              onboarding: onboarding || undefined,
+                            }),
+                          });
+
+                          if (!res.ok)
+                            throw new Error("Error al cargar más libros");
+
+                          const data = await res.json();
+
+                          // Atualizar a mensagem com os novos livros
+                          setMessages((prev) =>
+                            prev.map((m) =>
+                              m.id === message.id
+                                ? {
+                                    ...m,
+                                    books: [...(m.books || []), ...data.books],
+                                    hasMoreBooks: data.hasMore,
+                                    nextStartIndex: data.nextStartIndex,
+                                  }
+                                : m
+                            )
+                          );
+                        } catch (error) {
+                          console.error(error);
+                          toast({
+                            title: "Error",
+                            description: "No se pudieron cargar más libros",
+                            variant: "destructive",
+                          });
+                        } finally {
+                          setLoadingMoreBooks(null);
+                        }
+                      }}
+                    >
+                      {loadingMoreBooks === message.id ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Cargando...
+                        </>
+                      ) : (
+                        "Mostrar más libros"
+                      )}
+                    </Button>
+                  )}
                 </div>
               )}
             </div>

@@ -8,6 +8,7 @@ import { Slider } from "@/components/ui/slider"
 interface ReadingTimeScreenProps {
   onNext: () => void
   onBack: () => void
+  onReadingTimeChange?: (minutes: number) => void
 }
 
 export function ReadingTimeScreen({ onNext, onBack }: ReadingTimeScreenProps) {
@@ -56,7 +57,17 @@ export function ReadingTimeScreen({ onNext, onBack }: ReadingTimeScreenProps) {
 
             {/* Slider */}
             <div className="space-y-4">
-              <Slider value={minutes} onValueChange={setMinutes} min={5} max={120} step={5} className="w-full" />
+              <Slider
+                value={minutes}
+                onValueChange={(value) => {
+                  setMinutes(value)
+                  onReadingTimeChange?.(value[0])
+                }}
+                min={5}
+                max={120}
+                step={5}
+                className="w-full"
+              />
               <div className="flex justify-between text-xs text-muted-foreground">
                 <span>5 min</span>
                 <span>30 min</span>

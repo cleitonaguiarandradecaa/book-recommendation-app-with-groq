@@ -7,6 +7,7 @@ import { ChevronLeft, BookmarkCheck, Zap, Trophy } from "lucide-react"
 interface ReaderLevelScreenProps {
   onNext: () => void
   onBack: () => void
+  onLevelChange?: (level: "beginner" | "intermediate" | "advanced") => void
 }
 
 const levels = [
@@ -36,7 +37,7 @@ const levels = [
   },
 ]
 
-export function ReaderLevelScreen({ onNext, onBack }: ReaderLevelScreenProps) {
+export function ReaderLevelScreen({ onNext, onBack, onLevelChange }: ReaderLevelScreenProps) {
   const [selectedLevel, setSelectedLevel] = useState<string | null>(null)
 
   return (
@@ -73,7 +74,10 @@ export function ReaderLevelScreen({ onNext, onBack }: ReaderLevelScreenProps) {
               return (
                 <button
                   key={level.id}
-                  onClick={() => setSelectedLevel(level.id)}
+                  onClick={() => {
+                    setSelectedLevel(level.id)
+                    onLevelChange?.(level.id as "beginner" | "intermediate" | "advanced")
+                  }}
                   className={`flex w-full items-start gap-4 rounded-2xl p-5 text-left transition-all ${
                     isSelected
                       ? "bg-primary text-primary-foreground shadow-md scale-[0.98]"
