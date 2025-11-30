@@ -1,29 +1,10 @@
 import { NextResponse } from "next/server"
-import { getRecommendations } from "@/lib/recommendations-store"
+import type { Recommendation } from "@/lib/auth"
 
-export type Recommendation = {
-  id: string | number
-  title: string
-  author: string
-  genre: string
-  pages?: number
-  reason?: string
-  level?: string
-  cover?: string
-  price?: {
-    amount: number
-    currency: string
-  }
-  buyLink?: string
-  previewLink?: string
-  description?: string
-  rating?: number
-}
-
-// Recomendaciones mock iniciales
+// Recomendaciones mock iniciales (apenas para demonstração)
 const MOCK_RECOMMENDATIONS: Recommendation[] = [
   {
-    id: 1,
+    id: "1",
     title: "El Nombre del Viento",
     author: "Patrick Rothfuss",
     genre: "Fantasía",
@@ -33,7 +14,7 @@ const MOCK_RECOMMENDATIONS: Recommendation[] = [
     cover: "/fantasy-book-cover-red.jpg",
   },
   {
-    id: 2,
+    id: "2",
     title: "Cien Años de Soledad",
     author: "Gabriel García Márquez",
     genre: "Realismo mágico",
@@ -43,7 +24,7 @@ const MOCK_RECOMMENDATIONS: Recommendation[] = [
     cover: "/classic-literature-book-cover-yellow.jpg",
   },
   {
-    id: 3,
+    id: "3",
     title: "La Guía del Autoestopista Galáctico",
     author: "Douglas Adams",
     genre: "Ciencia ficción / Humor",
@@ -54,24 +35,16 @@ const MOCK_RECOMMENDATIONS: Recommendation[] = [
   },
 ]
 
+export type { Recommendation }
+
 export async function GET() {
   try {
-    // Obter recomendações armazenadas dinamicamente
-    const storedRecommendations = getRecommendations()
-    
-    // Combinar recomendações mock com as armazenadas
-    const allRecommendations = [
-      ...MOCK_RECOMMENDATIONS,
-      ...storedRecommendations.map((r) => ({
-        ...r,
-        id: r.id,
-      })),
-    ]
-
-    return NextResponse.json({ recommendations: allRecommendations })
+    // Em produção, isso deveria buscar do banco de dados
+    // Por enquanto, retornamos apenas as mock
+    // O cliente carregará as recomendações do localStorage
+    return NextResponse.json({ recommendations: MOCK_RECOMMENDATIONS })
   } catch (error) {
     console.error("Error loading recommendations:", error)
-    // Em caso de erro, retornar apenas as mock
     return NextResponse.json({ recommendations: MOCK_RECOMMENDATIONS })
   }
 }

@@ -138,9 +138,11 @@ export async function POST(req: Request) {
     const body = await req.json()
     const messages = (body?.messages || []) as ChatMessage[]
     const onboarding = body?.onboarding as { interests: string[]; readingTime: number; readerLevel: string } | undefined
+    const userRecommendations = (body?.userRecommendations || []) as Array<{ id: string }>
     const lastMessage = messages[messages.length - 1]?.content || ""
 
     console.log("API Chat: Recebendo dados de onboarding", onboarding)
+    console.log("API Chat: Recomendações do usuário", userRecommendations.length)
 
     // Verificar se o usuário está pedindo livros
     const needsBookSearch = shouldSearchBooks(lastMessage)
@@ -228,8 +230,72 @@ export async function POST(req: Request) {
             })
           }
 
+          // Filtrar livros que já estão nas recomendações do usuário
+          const recommendedBookIds = new Set(userRecommendations.map((r) => String(r.id)))
+          const filteredBooks = allBooks.filter((book: any) => !recommendedBookIds.has(book.id))
+
+          // Se não temos 5 livros após filtrar, buscar mais para completar
+          const targetCount = 5
+          let startIndex = 10 // Começar de onde paramos (já buscamos 10)
+          let additionalFetches = 0
+          const maxAdditionalFetches = 5 // Limitar tentativas adicionais
+
+          while (filteredBooks.length < targetCount && startIndex < totalItems && additionalFetches < maxAdditionalFetches) {
+            const additionalUrl = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(searchTerms)}&startIndex=${startIndex}&maxResults=${targetCount * 2}&langRestrict=es`
+            const additionalRes = await fetch(additionalUrl)
+
+            if (additionalRes.ok) {
+              const additionalData = await additionalRes.json()
+              const additionalBooks = (additionalData.items || []).map((item: any) => {
+                const volumeInfo = item.volumeInfo || {}
+                const saleInfo = item.saleInfo || {}
+                const imageLinks = volumeInfo.imageLinks || {}
+                const cover = imageLinks.large || imageLinks.medium || imageLinks.thumbnail || imageLinks.smallThumbnail
+                const price = saleInfo.listPrice || saleInfo.retailPrice
+                const bookCategories = (volumeInfo.categories || []).map((cat: string) => cat.toLowerCase())
+                let matchesInterests = false
+                if (onboarding && onboarding.interests.length > 0) {
+                  const interestTerms = onboarding.interests.map(i => interestToSearchTerm[i]?.toLowerCase()).filter(Boolean)
+                  matchesInterests = bookCategories.some((cat: string) =>
+                    interestTerms.some((interest: string) => cat.includes(interest) || interest.includes(cat))
+                  )
+                }
+
+                return {
+                  id: item.id,
+                  title: volumeInfo.title || "Sin título",
+                  author: (volumeInfo.authors || ["Autor desconocido"]).join(", "),
+                  description: volumeInfo.description,
+                  cover: cover?.replace("http://", "https://"),
+                  genre: volumeInfo.categories?.[0] || volumeInfo.categories?.join(", ") || "Sin categoría",
+                  pages: volumeInfo.pageCount,
+                  publishedDate: volumeInfo.publishedDate,
+                  rating: volumeInfo.averageRating,
+                  price: price ? {
+                    amount: price.amount,
+                    currency: price.currencyCode || "USD"
+                  } : undefined,
+                  buyLink: saleInfo.buyLink,
+                  previewLink: volumeInfo.previewLink || volumeInfo.infoLink,
+                  matchesInterests,
+                }
+              })
+
+              // Filtrar os novos livros também
+              const newFilteredBooks = additionalBooks.filter((book: any) => !recommendedBookIds.has(book.id))
+              filteredBooks.push(...newFilteredBooks)
+              startIndex += additionalData.items?.length || 0
+              additionalFetches++
+
+              // Se não há mais itens, parar
+              if (!additionalData.items || additionalData.items.length === 0) break
+            } else {
+              break
+            }
+          }
+
           // Limitar a 5 resultados iniciais
-          books = allBooks.slice(0, 5)
+          books = filteredBooks.slice(0, targetCount)
         }
       } catch (error) {
         console.error("Error searching books:", error)

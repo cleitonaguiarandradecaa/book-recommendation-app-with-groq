@@ -48,7 +48,13 @@ interface Message {
 }
 
 export default function ChatPage() {
-  const { isAuthenticated, onboarding, isLoading: authLoading } = useAuth();
+  const {
+    isAuthenticated,
+    onboarding,
+    isLoading: authLoading,
+    addRecommendation,
+    recommendations,
+  } = useAuth();
   const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -138,6 +144,7 @@ export default function ChatPage() {
             { role: "user", content },
           ],
           onboarding: onboarding || undefined,
+          userRecommendations: recommendations || [],
         }),
       });
 
@@ -208,15 +215,18 @@ export default function ChatPage() {
                 message.role === "user" ? "items-end" : "items-start"
               }`}
             >
-              <div
-                className={`max-w-[80%] rounded-3xl px-5 py-3 ${
-                  message.role === "user"
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-card text-card-foreground shadow-sm"
-                }`}
-              >
-                <p className="text-sm leading-relaxed">{message.content}</p>
-              </div>
+              {/* Exibir mensagem de texto apenas se não houver livros */}
+              {(!message.books || message.books.length === 0) && (
+                <div
+                  className={`max-w-[80%] rounded-3xl px-5 py-3 ${
+                    message.role === "user"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-card text-card-foreground shadow-sm"
+                  }`}
+                >
+                  <p className="text-sm leading-relaxed">{message.content}</p>
+                </div>
+              )}
 
               {/* Exibir livros se houver */}
               {message.books && message.books.length > 0 && (
@@ -265,31 +275,41 @@ export default function ChatPage() {
                               className="h-8 text-xs gap-1.5"
                               onClick={async () => {
                                 try {
-                                  const res = await fetch(
-                                    "/api/recommendations/add",
-                                    {
-                                      method: "POST",
-                                      headers: {
-                                        "Content-Type": "application/json",
-                                      },
-                                      body: JSON.stringify({
-                                        book: {
-                                          ...book,
-                                          reason: "Recomendado desde el chat",
-                                          level: "Intermedio",
-                                        },
-                                      }),
-                                    }
-                                  );
-                                  if (res.ok) {
+                                  // Salvar no localStorage do usuário via contexto
+                                  const added = addRecommendation({
+                                    ...book,
+                                    reason: "Recomendado desde el chat",
+                                    level: "Intermedio",
+                                  });
+
+                                  if (added) {
+                                    // Remover o livro da lista de livros da mensagem
+                                    setMessages((prev) =>
+                                      prev.map((m) =>
+                                        m.id === message.id
+                                          ? {
+                                              ...m,
+                                              books:
+                                                m.books?.filter(
+                                                  (b) => b.id !== book.id
+                                                ) || [],
+                                            }
+                                          : m
+                                      )
+                                    );
+
                                     toast({
                                       title: "Libro agregado",
                                       description: `${book.title} ha sido agregado a tus recomendaciones`,
                                     });
                                   } else {
-                                    throw new Error("Error al agregar");
+                                    toast({
+                                      title: "Ya existe",
+                                      description: `${book.title} ya está en tus recomendaciones`,
+                                    });
                                   }
                                 } catch (error) {
+                                  console.error(error);
                                   toast({
                                     title: "Error",
                                     description: "No se pudo agregar el libro",
@@ -350,6 +370,7 @@ export default function ChatPage() {
                               searchTerms: message.searchTerms,
                               startIndex: message.nextStartIndex || 5,
                               onboarding: onboarding || undefined,
+                              userRecommendations: recommendations || [],
                             }),
                           });
 

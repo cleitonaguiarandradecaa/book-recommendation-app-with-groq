@@ -4,31 +4,75 @@ import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { ChevronLeft, BookmarkPlus, Info, ShoppingCart } from "lucide-react"
 import Link from "next/link"
-import type { Recommendation } from "@/app/api/recommendations/route"
+import type { Recommendation } from "@/lib/auth"
 import { toast } from "@/hooks/use-toast"
+import { useAuth } from "@/contexts/auth-context"
+
+// Recomendaciones mock iniciais
+const MOCK_RECOMMENDATIONS: Recommendation[] = [
+  {
+    id: "1",
+    title: "El Nombre del Viento",
+    author: "Patrick Rothfuss",
+    genre: "Fantasía",
+    pages: 722,
+    reason: "Porque te gustan las historias épicas y complejas",
+    level: "Intermedio",
+    cover: "/fantasy-book-cover-red.jpg",
+  },
+  {
+    id: "2",
+    title: "Cien Años de Soledad",
+    author: "Gabriel García Márquez",
+    genre: "Realismo mágico",
+    pages: 471,
+    reason: "Por tu interés en historias profundas con múltiples generaciones",
+    level: "Avanzado",
+    cover: "/classic-literature-book-cover-yellow.jpg",
+  },
+  {
+    id: "3",
+    title: "La Guía del Autoestopista Galáctico",
+    author: "Douglas Adams",
+    genre: "Ciencia ficción / Humor",
+    pages: 384,
+    reason: "Combina ciencia ficción con humor, ideal para tus gustos relajados",
+    level: "Intermedio",
+    cover: "/science-fiction-book-cover-orange.jpg",
+  },
+]
 
 export default function RecommendationsPage() {
+  const { user, recommendations } = useAuth()
   const [books, setBooks] = useState<Recommendation[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    const loadRecommendations = async () => {
+    const loadRecommendations = () => {
       try {
-        const res = await fetch("/api/recommendations")
-        if (!res.ok) throw new Error("Error al cargar recomendaciones")
-        const data = await res.json()
-        setBooks(data.recommendations || [])
+        // Combinar recomendações mock com as do usuário
+        const allRecommendations = [
+          ...MOCK_RECOMMENDATIONS,
+          ...recommendations.map((r) => ({
+            ...r,
+            id: String(r.id),
+          })),
+        ]
+        
+        setBooks(allRecommendations)
       } catch (e) {
         console.error(e)
         setError("No se pudieron cargar las recomendaciones.")
+        // Em caso de erro, mostrar apenas as mock
+        setBooks(MOCK_RECOMMENDATIONS)
       } finally {
         setLoading(false)
       }
     }
 
     loadRecommendations()
-  }, [])
+  }, [user, recommendations]) // Recarregar quando o usuário ou recomendações mudarem
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
