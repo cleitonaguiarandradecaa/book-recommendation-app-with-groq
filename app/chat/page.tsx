@@ -229,131 +229,153 @@ export default function ChatPage() {
               )}
 
               {/* Exibir livros se houver */}
-              {message.books && message.books.length > 0 && (
+              {(message.books && message.books.length > 0) ||
+              (message.hasMoreBooks && message.searchTerms) ? (
                 <div className="max-w-[80%] space-y-3">
-                  {message.books.map((book) => (
-                    <div
-                      key={book.id}
-                      className="rounded-2xl bg-card border shadow-sm overflow-hidden"
-                    >
-                      <div className="flex gap-4 p-4">
-                        {book.cover && (
-                          <div className="h-32 w-24 shrink-0 overflow-hidden rounded-lg bg-muted">
-                            <img
-                              src={book.cover}
-                              alt={book.title}
-                              className="h-full w-full object-cover"
-                            />
-                          </div>
-                        )}
-                        <div className="flex-1 min-w-0 space-y-2">
-                          <div>
-                            <h3 className="font-semibold text-sm leading-tight">
-                              {book.title}
-                            </h3>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              {book.author}
-                            </p>
-                            {book.genre && (
-                              <p className="text-xs text-muted-foreground">
-                                {book.genre}
-                              </p>
-                            )}
-                            {book.price && (
-                              <p className="text-sm font-medium text-primary mt-1">
-                                {new Intl.NumberFormat("es-ES", {
-                                  style: "currency",
-                                  currency: book.price.currency,
-                                }).format(book.price.amount)}
-                              </p>
-                            )}
-                          </div>
-                          <div className="flex flex-wrap gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-8 text-xs gap-1.5"
-                              onClick={async () => {
-                                try {
-                                  // Salvar no localStorage do usuário via contexto
-                                  const added = addRecommendation({
-                                    ...book,
-                                    reason: "Recomendado desde el chat",
-                                    level: "Intermedio",
-                                  });
+                  {message.books && message.books.length > 0 && (
+                    <>
+                      {message.books
+                        .filter(
+                          (book, index, self) =>
+                            // Remover duplicatas baseado no ID do livro
+                            index === self.findIndex((b) => b.id === book.id)
+                        )
+                        .map((book, index) => (
+                          <div
+                            key={`${message.id}-${book.id}-${index}`}
+                            className="rounded-2xl bg-card border shadow-sm overflow-hidden"
+                          >
+                            <div className="flex gap-4 p-4">
+                              {book.cover && (
+                                <div className="h-32 w-24 shrink-0 overflow-hidden rounded-lg bg-muted">
+                                  <img
+                                    src={book.cover}
+                                    alt={book.title}
+                                    className="h-full w-full object-cover"
+                                  />
+                                </div>
+                              )}
+                              <div className="flex-1 min-w-0 space-y-2">
+                                <div>
+                                  <h3 className="font-semibold text-sm leading-tight">
+                                    {book.title}
+                                  </h3>
+                                  <p className="text-xs text-muted-foreground mt-1">
+                                    {book.author}
+                                  </p>
+                                  {book.genre && (
+                                    <p className="text-xs text-muted-foreground">
+                                      {book.genre}
+                                    </p>
+                                  )}
+                                  {book.price && (
+                                    <p className="text-sm font-medium text-primary mt-1">
+                                      {new Intl.NumberFormat("es-ES", {
+                                        style: "currency",
+                                        currency: book.price.currency,
+                                      }).format(book.price.amount)}
+                                    </p>
+                                  )}
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-8 text-xs gap-1.5"
+                                    onClick={async () => {
+                                      try {
+                                        // Salvar no localStorage do usuário via contexto
+                                        const added = addRecommendation({
+                                          ...book,
+                                          reason: "Recomendado desde el chat",
+                                          level: "Intermedio",
+                                        });
 
-                                  if (added) {
-                                    // Remover o livro da lista de livros da mensagem
-                                    setMessages((prev) =>
-                                      prev.map((m) =>
-                                        m.id === message.id
-                                          ? {
-                                              ...m,
-                                              books:
-                                                m.books?.filter(
-                                                  (b) => b.id !== book.id
-                                                ) || [],
-                                            }
-                                          : m
-                                      )
-                                    );
+                                        if (added) {
+                                          // Remover o livro da lista de livros da mensagem
+                                          setMessages((prev) =>
+                                            prev.map((m) =>
+                                              m.id === message.id
+                                                ? {
+                                                    ...m,
+                                                    books:
+                                                      m.books?.filter(
+                                                        (b) => b.id !== book.id
+                                                      ) || [],
+                                                  }
+                                                : m
+                                            )
+                                          );
 
-                                    toast({
-                                      title: "Libro agregado",
-                                      description: `${book.title} ha sido agregado a tus recomendaciones`,
-                                    });
-                                  } else {
-                                    toast({
-                                      title: "Ya existe",
-                                      description: `${book.title} ya está en tus recomendaciones`,
-                                    });
-                                  }
-                                } catch (error) {
-                                  console.error(error);
-                                  toast({
-                                    title: "Error",
-                                    description: "No se pudo agregar el libro",
-                                    variant: "destructive",
-                                  });
-                                }
-                              }}
-                            >
-                              <BookmarkPlus className="h-3.5 w-3.5" />
-                              Agregar
-                            </Button>
-                            {book.buyLink && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-8 text-xs gap-1.5"
-                                onClick={() =>
-                                  window.open(book.buyLink, "_blank")
-                                }
-                              >
-                                <ShoppingCart className="h-3.5 w-3.5" />
-                                Comprar
-                              </Button>
-                            )}
-                            {book.previewLink && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-8 text-xs gap-1.5"
-                                onClick={() =>
-                                  window.open(book.previewLink, "_blank")
-                                }
-                              >
-                                <ExternalLink className="h-3.5 w-3.5" />
-                                Ver
-                              </Button>
+                                          toast({
+                                            title: "Libro agregado",
+                                            description: `${book.title} ha sido agregado a tus recomendaciones`,
+                                          });
+                                        } else {
+                                          toast({
+                                            title: "Ya existe",
+                                            description: `${book.title} ya está en tus recomendaciones`,
+                                          });
+                                        }
+                                      } catch (error) {
+                                        console.error(error);
+                                        toast({
+                                          title: "Error",
+                                          description:
+                                            "No se pudo agregar el libro",
+                                          variant: "destructive",
+                                        });
+                                      }
+                                    }}
+                                  >
+                                    <BookmarkPlus className="h-3.5 w-3.5" />
+                                    Agregar
+                                  </Button>
+                                  {book.buyLink && (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-8 text-xs gap-1.5"
+                                      onClick={() =>
+                                        window.open(book.buyLink, "_blank")
+                                      }
+                                    >
+                                      <ShoppingCart className="h-3.5 w-3.5" />
+                                      Comprar
+                                    </Button>
+                                  )}
+                                  {book.previewLink && (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-8 text-xs gap-1.5"
+                                      onClick={() =>
+                                        window.open(book.previewLink, "_blank")
+                                      }
+                                    >
+                                      <ExternalLink className="h-3.5 w-3.5" />
+                                      Ver
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            {/* Container para a sinopse abaixo das informações */}
+                            {book.description && (
+                              <div className="px-4 pb-4 pt-0 border-t bg-muted/30">
+                                <p className="text-xs text-muted-foreground leading-relaxed">
+                                  {book.description.length > 300
+                                    ? `${book.description.substring(0, 300)}...`
+                                    : book.description}
+                                </p>
+                              </div>
                             )}
                           </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                        ))}
+                    </>
+                  )}
 
-                  {/* Botão para carregar mais livros */}
+                  {/* Botão para carregar mais livros - sempre visível se houver mais livros disponíveis */}
                   {message.hasMoreBooks && message.searchTerms && (
                     <Button
                       variant="outline"
@@ -379,18 +401,25 @@ export default function ChatPage() {
 
                           const data = await res.json();
 
-                          // Atualizar a mensagem com os novos livros
+                          // Atualizar a mensagem com os novos livros, removendo duplicatas
                           setMessages((prev) =>
-                            prev.map((m) =>
-                              m.id === message.id
-                                ? {
-                                    ...m,
-                                    books: [...(m.books || []), ...data.books],
-                                    hasMoreBooks: data.hasMore,
-                                    nextStartIndex: data.nextStartIndex,
-                                  }
-                                : m
-                            )
+                            prev.map((m) => {
+                              if (m.id === message.id) {
+                                const existingBookIds = new Set(
+                                  (m.books || []).map((b) => b.id)
+                                );
+                                const newBooks = data.books.filter(
+                                  (book: Book) => !existingBookIds.has(book.id)
+                                );
+                                return {
+                                  ...m,
+                                  books: [...(m.books || []), ...newBooks],
+                                  hasMoreBooks: data.hasMore,
+                                  nextStartIndex: data.nextStartIndex,
+                                };
+                              }
+                              return m;
+                            })
                           );
                         } catch (error) {
                           console.error(error);
@@ -415,7 +444,7 @@ export default function ChatPage() {
                     </Button>
                   )}
                 </div>
-              )}
+              ) : null}
             </div>
           ))}
 

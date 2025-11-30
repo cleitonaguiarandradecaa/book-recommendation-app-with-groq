@@ -4,9 +4,13 @@ import Link from "next/link"
 import { useAuth } from "@/contexts/auth-context"
 
 export function HomeScreen() {
-  const { user } = useAuth()
+  const { user, recommendations } = useAuth()
   const userName = user?.name || "Usuario"
   const greeting = `¡Buen día, ${userName.split(" ")[0]}!`
+  
+  // Contar total de recomendações (mock + do usuário)
+  const MOCK_RECOMMENDATIONS_COUNT = 3 // Número de recomendações mock
+  const totalRecommendations = MOCK_RECOMMENDATIONS_COUNT + (recommendations?.length || 0)
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -51,14 +55,21 @@ export function HomeScreen() {
           </Link>
 
           {/* Quick Actions */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2" style={{ gap: '16px' }}>
             <Link href="/recommendations">
-              <button className="flex flex-col items-start gap-3 rounded-2xl bg-card p-5 text-left shadow-sm transition-all hover:shadow-md hover:scale-[0.98]">
+              <button className="flex flex-col items-start gap-3 rounded-2xl bg-card p-5 text-left shadow-sm transition-all hover:shadow-md hover:scale-[0.98] relative">
                 <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
                   <BookOpen className="h-6 w-6 text-primary" strokeWidth={1.5} />
                 </div>
-                <div>
-                  <h3 className="font-semibold">Recomendaciones</h3>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-semibold">Recomendaciones</h3>
+                    {totalRecommendations > 0 && (
+                      <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-xs font-medium text-primary-foreground">
+                        {totalRecommendations}
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-muted-foreground">Ver sugerencias</p>
                 </div>
               </button>
