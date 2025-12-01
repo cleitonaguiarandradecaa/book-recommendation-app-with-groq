@@ -53,7 +53,7 @@ interface BookDetails extends Recommendation {
 export default function BookDetailPage() {
   const params = useParams()
   const bookId = params?.id as string
-  const { recommendations, addToReadingPlan, isInReadingPlan } = useAuth()
+  const { recommendations, addToReadingPlan, isInReadingPlan, refreshReadingPlans } = useAuth()
   const [book, setBook] = useState<BookDetails | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -278,11 +278,13 @@ export default function BookDetailPage() {
             variant={isInPlan ? "default" : "outline"} 
             size="lg" 
             className={`flex-1 rounded-full ${isInPlan ? "" : "bg-transparent"}`}
-            onClick={() => {
+            onClick={async () => {
               if (!isInPlan && book) {
                 const added = addToReadingPlan(book)
                 if (added) {
                   setIsInPlan(true)
+                  // Forçar atualização do contexto
+                  refreshReadingPlans()
                   toast({
                     title: "Libro agregado",
                     description: `${book.title} ha sido agregado a tu plan de lectura`,

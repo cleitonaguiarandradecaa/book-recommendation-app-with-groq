@@ -5,14 +5,21 @@ type ChatMessage = {
   content: string
 }
 
-function getSystemPrompt(onboarding?: { interests: string[]; readingTime: number; readerLevel: string }): string {
+function getSystemPrompt(
+  onboarding?: { interests: string[]; readingTime: number; readerLevel: string },
+  isBookSearch: boolean = false
+): string {
   let prompt = `
 Eres un asistente literario conversacional.
 - Hablas SIEMPRE en español neutro.
-- Recomiendas libros con explicaciones claras y amables.
+${isBookSearch
+      ? `- CRÍTICO: El usuario está pidiendo libros específicos. El sistema YA ESTÁ BUSCANDO los libros en la API de Google Books.
+- Responde ÚNICAMENTE con "." (punto) o una cadena vacía. NO escribas nada más.
+- NO recomiendes libros, NO menciones títulos, NO des explicaciones. El sistema mostrará los resultados automáticamente.
+- Tu respuesta será ignorada, solo responde con "."`
+      : `- Recomiendas libros con explicaciones claras y amables.
 - Puedes proponer planes de lectura (por días o semanas) según el tiempo disponible.
-- Si el usuario pide recomendaciones de libros, comprar libros, o buscar libros, debes responder normalmente pero el sistema buscará libros reais na API do Google Books.
-- Cuando recomiendes libros, sé específico sobre títulos y autores para que el sistema pueda buscarlos.
+- Puedes responder preguntas sobre libros, géneros, autores, etc.`}
 No inventes APIs ni datos de pago. Solo habla de recomendaciones, lectura y organización.
 `.trim()
 
@@ -39,6 +46,7 @@ Usa esta información para personalizar tus recomendaciones. Prioriza los géner
 function shouldSearchBooks(message: string): boolean {
   const lowerMessage = message.toLowerCase()
   const keywords = [
+    // Español
     "recomendar",
     "recomendación",
     "recomendaciones",
@@ -49,10 +57,37 @@ function shouldSearchBooks(message: string): boolean {
     "libro sobre",
     "libros de",
     "libro de",
+    "libros con",
+    "libro con",
     "quiero leer",
+    "quiero libros",
+    "quiero un libro",
+    "necesito libros",
+    "necesito un libro",
+    "dame libros",
+    "muéstrame libros",
+    "libros que",
+    "libro que",
+    "libros sobre",
     "me gusta",
     "género",
     "autor",
+    // Português
+    "quero livros",
+    "quero um livro",
+    "quero livro",
+    "livros com",
+    "livro com",
+    "livros de",
+    "livro de",
+    "livros sobre",
+    "livro sobre",
+    "buscar livros",
+    "buscar livro",
+    "recomendar livros",
+    "recomendar livro",
+    "preciso de livros",
+    "preciso de livro",
   ]
   return keywords.some((keyword) => lowerMessage.includes(keyword))
 }
@@ -73,12 +108,98 @@ const interestToSearchTerm: Record<string, string> = {
   adventure: "aventura",
 }
 
-// Función para extrair termos de busca da mensagem
-function extractSearchTerms(message: string, onboarding?: { interests: string[]; readingTime: number; readerLevel: string }): string {
+// Función para extrair termos de busca usando Groq quando há características específicas
+async function extractSearchTermsWithAI(
+  message: string,
+  onboarding?: { interests: string[]; readingTime: number; readerLevel: string },
+  groqApiKey?: string
+): Promise<string> {
+  // Se não há API key, usar método simples
+  if (!groqApiKey) {
+    return extractSearchTermsSimple(message, onboarding)
+  }
+
+  // Verificar se a mensagem tem características específicas que justificam usar IA
+  const lowerMessage = message.toLowerCase()
+  const hasSpecificCharacteristics =
+    lowerMessage.includes("con") ||
+    lowerMessage.includes("com") || // Português
+    lowerMessage.includes("que tenga") ||
+    lowerMessage.includes("que tenha") || // Português
+    lowerMessage.includes("que sea") ||
+    lowerMessage.includes("sobre") ||
+    lowerMessage.includes("temática") ||
+    lowerMessage.includes("tema") ||
+    lowerMessage.includes("com características") || // Português
+    lowerMessage.includes("com dragões") || // Português
+    lowerMessage.includes("com dragones") || // Espanhol
+    message.length > 20 // Mensagens mais longas provavelmente têm mais detalhes
+
+  // Se não tem características específicas, usar método simples
+  if (!hasSpecificCharacteristics) {
+    return extractSearchTermsSimple(message, onboarding)
+  }
+
+  try {
+    // Usar Groq para extrair características e criar query de busca
+    const extractionPrompt = `Analiza la siguiente solicitud del usuario y extrae las características específicas de los libros que busca. 
+Responde SOLO con una query de búsqueda optimizada para la API de Google Books (máximo 10 palabras clave relevantes).
+No incluyas palabras como "libro", "recomendar", "buscar" - solo términos de búsqueda.
+
+Solicitud del usuario: "${message}"
+
+${onboarding && onboarding.interests.length > 0
+        ? `Géneros favoritos del usuario: ${onboarding.interests.map(i => interestToSearchTerm[i] || i).join(", ")}`
+        : ""}
+
+Ejemplos:
+- "quiero un libro de ciencia ficción sobre viajes en el tiempo" → "ciencia ficción viajes tiempo"
+- "libros de romance históricos ambientados en el siglo XIX" → "romance histórico siglo XIX"
+- "novelas de misterio con protagonista femenino" → "misterio protagonista femenino"
+
+Query de búsqueda:`
+
+    const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${groqApiKey}`,
+      },
+      body: JSON.stringify({
+        model: "llama-3.1-8b-instant",
+        messages: [
+          { role: "system", content: "Eres un asistente que extrae términos de búsqueda de libros. Responde solo con los términos de búsqueda, sin explicaciones." },
+          { role: "user", content: extractionPrompt }
+        ],
+        temperature: 0.3,
+        max_tokens: 50,
+      }),
+    })
+
+    if (groqRes.ok) {
+      const data = await groqRes.json()
+      const extractedTerms = data?.choices?.[0]?.message?.content?.trim()
+
+      if (extractedTerms && extractedTerms.length > 0) {
+        console.log("API Chat: Termos extraídos pelo Groq:", extractedTerms)
+        return extractedTerms
+      }
+    }
+  } catch (error) {
+    console.error("Error ao extrair termos com Groq:", error)
+  }
+
+  // Fallback para método simples
+  return extractSearchTermsSimple(message, onboarding)
+}
+
+// Función simple para extrair termos de busca (fallback)
+function extractSearchTermsSimple(message: string, onboarding?: { interests: string[]; readingTime: number; readerLevel: string }): string {
   const lowerMessage = message.toLowerCase()
 
-  // Remover palavras comuns
+  // Remover palavras comuns (espanhol e português)
   const stopWords = [
+    // Español
     "quiero",
     "me gusta",
     "buscar",
@@ -99,6 +220,21 @@ function extractSearchTerms(message: string, onboarding?: { interests: string[];
     "por favor",
     "puedes",
     "podrías",
+    // Português
+    "quero",
+    "gosto",
+    "gostaria",
+    "preciso",
+    "precisaria",
+    "livro",
+    "livros",
+    "um",
+    "uma",
+    "por favor",
+    "pode",
+    "poderia",
+    "desejo",
+    "desejaria",
   ]
 
   let searchTerm = message
@@ -147,6 +283,12 @@ export async function POST(req: Request) {
     // Verificar se o usuário está pedindo livros
     const needsBookSearch = shouldSearchBooks(lastMessage)
     let books: any[] = []
+    let searchTerms: string = ""
+    let hasMore = false
+    let nextStartIndex = 0
+
+    // Obter API key do Groq para extração de características
+    const groqApiKey = process.env.GROQ_API_KEY
 
     if (needsBookSearch) {
       try {
@@ -155,8 +297,6 @@ export async function POST(req: Request) {
           lastMessage.toLowerCase().includes("recomendación") ||
           lastMessage.toLowerCase().includes("recomendaciones") ||
           lastMessage.toLowerCase().trim() === ""
-
-        let searchTerms: string
 
         if (isGenericRequest && onboarding && onboarding.interests.length > 0) {
           // Usar apenas os interesses do onboarding para busca genérica
@@ -167,9 +307,9 @@ export async function POST(req: Request) {
           searchTerms = interestTerms
           console.log("API Chat: Buscando livros baseado nos interesses do onboarding", interestTerms)
         } else {
-          // Extrair termos da mensagem e combinar com interesses se disponível
-          searchTerms = extractSearchTerms(lastMessage, onboarding)
-          console.log("API Chat: Termos de busca", searchTerms)
+          // Extrair termos usando IA quando há características específicas
+          searchTerms = await extractSearchTermsWithAI(lastMessage, onboarding, groqApiKey)
+          console.log("API Chat: Termos de busca extraídos", searchTerms)
         }
 
         // Buscar diretamente na Google Books API (primeiros 5 resultados)
@@ -179,7 +319,7 @@ export async function POST(req: Request) {
         if (booksRes.ok) {
           const data = await booksRes.json()
           const totalItems = data.totalItems || 0
-          const hasMore = totalItems > 5
+          hasMore = totalItems > 5
 
           // Transformar os resultados da Google Books
           let allBooks = (data.items || []).map((item: any) => {
@@ -296,13 +436,24 @@ export async function POST(req: Request) {
 
           // Limitar a 5 resultados iniciais
           books = filteredBooks.slice(0, targetCount)
+
+          // Atualizar informações de paginação
+          hasMore = totalItems > books.length || filteredBooks.length > targetCount
+          nextStartIndex = books.length
+
+          console.log("API Chat: Livros encontrados:", books.length)
+          console.log("API Chat: Primeiro livro:", books[0]?.title)
+        } else {
+          console.log("API Chat: Nenhum livro encontrado na API do Google Books")
         }
       } catch (error) {
         console.error("Error searching books:", error)
       }
+    } else {
+      console.log("API Chat: Busca de livros não necessária ou searchTerms vazio")
     }
 
-    const groqApiKey = process.env.GROQ_API_KEY
+    // Verificar se há API key do Groq
     if (!groqApiKey) {
       console.error("Falta GROQ_API_KEY en las variables de entorno")
       return NextResponse.json(
@@ -314,7 +465,7 @@ export async function POST(req: Request) {
       )
     }
 
-    const systemPrompt = getSystemPrompt(onboarding)
+    const systemPrompt = getSystemPrompt(onboarding, needsBookSearch)
 
     const finalMessages: ChatMessage[] = [
       { role: "system", content: systemPrompt },
@@ -347,44 +498,32 @@ export async function POST(req: Request) {
     }
 
     const data = await groqRes.json()
-    const reply =
+    let reply =
       data?.choices?.[0]?.message?.content ??
       "No pude generar una respuesta en este momento. Intenta de nuevo."
 
-    // Se houver busca de livros, incluir informações de paginação
-    let responseData: any = { reply, books }
-    if (needsBookSearch && books.length > 0) {
-      // Obter termos de busca usados
-      try {
-        const isGenericRequest = lastMessage.toLowerCase().includes("recomendar") ||
-          lastMessage.toLowerCase().includes("recomendación") ||
-          lastMessage.toLowerCase().includes("recomendaciones") ||
-          lastMessage.toLowerCase().trim() === ""
+    // Se houver busca de livros, ajustar resposta e incluir informações de paginação
+    let responseData: any = { reply, books: books || [] }
 
-        let searchTermsForPagination: string
-        if (isGenericRequest && onboarding && onboarding.interests.length > 0) {
-          const interestTerms = onboarding.interests
-            .map((interest) => interestToSearchTerm[interest])
-            .filter(Boolean)
-            .join(" OR ")
-          searchTermsForPagination = interestTerms
-        } else {
-          searchTermsForPagination = extractSearchTerms(lastMessage, onboarding)
-        }
-
-        // Verificar se há mais livros disponíveis
-        const googleBooksUrl = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(searchTermsForPagination)}&startIndex=0&maxResults=1&langRestrict=es`
-        const paginationRes = await fetch(googleBooksUrl)
-        if (paginationRes.ok) {
-          const paginationData = await paginationRes.json()
-          const totalItems = paginationData.totalItems || 0
-          responseData.searchTerms = searchTermsForPagination
-          responseData.hasMoreBooks = totalItems > 5
-          responseData.nextStartIndex = 5
-        }
-      } catch (error) {
-        console.error("Error getting pagination info:", error)
+    if (needsBookSearch && searchTerms) {
+      // Quando há busca de livros, sempre ignorar resposta do Groq e mostrar apenas os livros
+      if (books && books.length > 0) {
+        // Sempre usar mensagem vazia quando há livros - os livros serão exibidos diretamente
+        responseData.reply = ""
+        responseData.books = books // Garantir que os livros estão no array
+        responseData.searchTerms = searchTerms
+        responseData.hasMoreBooks = hasMore
+        responseData.nextStartIndex = nextStartIndex
+        console.log("API Chat: Retornando", books.length, "livros para exibição")
+      } else {
+        // Se não há livros, usar mensagem informativa
+        responseData.reply = "No encontré libros que coincidan exactamente con tu búsqueda. Intenta con otros términos o características más específicas."
+        responseData.books = []
       }
+    } else if (needsBookSearch && !searchTerms) {
+      // Se deveria buscar mas não há termos, manter resposta do Groq mas informar
+      responseData.reply = reply
+      responseData.books = []
     }
 
     return NextResponse.json(responseData)

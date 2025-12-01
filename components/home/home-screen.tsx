@@ -1,16 +1,81 @@
 "use client"
+import { useEffect } from "react"
 import { BookOpen, MessageSquare, Target, User, Sparkles, TrendingUp } from "lucide-react"
 import Link from "next/link"
 import { useAuth } from "@/contexts/auth-context"
 
 export function HomeScreen() {
-  const { user, recommendations } = useAuth()
+  const { user, recommendations, readingPlans, isInReadingPlan, refreshReadingPlans } = useAuth()
   const userName = user?.name || "Usuario"
   const greeting = `¡Buen día, ${userName.split(" ")[0]}!`
   
-  // Contar total de recomendações (mock + do usuário)
-  const MOCK_RECOMMENDATIONS_COUNT = 3 // Número de recomendações mock
-  const totalRecommendations = MOCK_RECOMMENDATIONS_COUNT + (recommendations?.length || 0)
+  // Atualizar planos quando o componente montar
+  useEffect(() => {
+    refreshReadingPlans()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // Apenas na montagem inicial
+  
+  // IDs dos livros mock
+  const MOCK_BOOK_IDS = ["1", "2", "3"]
+  
+  // Contar total de recomendações disponíveis (mock + do usuário, excluindo os que estão no plano)
+  const mockRecommendations = MOCK_BOOK_IDS.filter((id) => !isInReadingPlan(id))
+  const userRecommendations = (recommendations || []).filter((rec) => !isInReadingPlan(String(rec.id)))
+  const totalRecommendations = mockRecommendations.length + userRecommendations.length
+
+  // Filtrar livros do plano de leitura que não estão concluídos (progress < 100), ordenados por progresso (maior primeiro)
+  const activeReadingPlans = (readingPlans || [])
+    .filter((plan) => plan.progress < 100) // Apenas livros não concluídos (inclui progresso 0)
+    .sort((a, b) => {
+      // Ordenar por progresso (maior primeiro), mas se progresso for igual, ordenar por data de adição (mais recente primeiro)
+      if (b.progress !== a.progress) {
+        return b.progress - a.progress
+      }
+      return new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime()
+    })
+  
+  const currentBook = activeReadingPlans.length > 0 ? activeReadingPlans[0] : null // Pegar o livro com maior progresso
+
+  // Calcular estatísticas de progresso de leitura
+  const totalBooks = readingPlans?.length || 0
+  const totalPagesRead = readingPlans?.reduce((sum, plan) => sum + (plan.currentPage || 0), 0) || 0
+  const completedBooks = readingPlans?.filter((plan) => plan.progress === 100).length || 0
+  const averageProgress = readingPlans && readingPlans.length > 0
+    ? Math.round(readingPlans.reduce((sum, plan) => sum + plan.progress, 0) / readingPlans.length)
+    : 0
+
+  // Calcular dias da semana atual com atividade de leitura (baseado em etapas completadas nesta semana)
+  const getDaysThisWeek = () => {
+    if (!readingPlans || readingPlans.length === 0) return 0
+    
+    const today = new Date()
+    const startOfWeek = new Date(today)
+    startOfWeek.setDate(today.getDate() - today.getDay()) // Domingo
+    startOfWeek.setHours(0, 0, 0, 0)
+    
+    const daysWithActivity = new Set<string>()
+    
+    // Percorrer todos os planos e suas etapas
+    readingPlans.forEach((plan) => {
+      if (plan.steps) {
+        plan.steps.forEach((step) => {
+          if (step.completed && step.completedAt) {
+            const completedDate = new Date(step.completedAt)
+            // Verificar se foi completada nesta semana
+            if (completedDate >= startOfWeek && completedDate <= today) {
+              // Adicionar a data única (YYYY-MM-DD) para contar dias distintos
+              const dateKey = completedDate.toISOString().split('T')[0]
+              daysWithActivity.add(dateKey)
+            }
+          }
+        })
+      }
+    })
+    
+    return daysWithActivity.size
+  }
+  
+  const daysThisWeek = getDaysThisWeek()
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -98,24 +163,27 @@ export function HomeScreen() {
             <div className="space-y-3">
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Esta semana</span>
-                <span className="font-medium">2 de 5 días</span>
+                <span className="font-medium">{daysThisWeek} de 7 días</span>
               </div>
               <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-                <div className="h-full w-[40%] rounded-full bg-success transition-all" />
+                <div 
+                  className="h-full rounded-full bg-success transition-all" 
+                  style={{ width: `${Math.round((daysThisWeek / 7) * 100)}%` }}
+                />
               </div>
 
               <div className="grid grid-cols-3 gap-4 pt-2">
                 <div className="space-y-1">
-                  <p className="text-2xl font-semibold">3</p>
-                  <p className="text-xs text-muted-foreground">Libros este mes</p>
+                  <p className="text-2xl font-semibold">{totalBooks}</p>
+                  <p className="text-xs text-muted-foreground">Libros en plan</p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-2xl font-semibold">47</p>
-                  <p className="text-xs text-muted-foreground">Páginas hoy</p>
+                  <p className="text-2xl font-semibold">{totalPagesRead}</p>
+                  <p className="text-xs text-muted-foreground">Páginas leídas</p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-2xl font-semibold">8h</p>
-                  <p className="text-xs text-muted-foreground">Total</p>
+                  <p className="text-2xl font-semibold">{completedBooks}</p>
+                  <p className="text-xs text-muted-foreground">Completados</p>
                 </div>
               </div>
             </div>
@@ -124,26 +192,53 @@ export function HomeScreen() {
           {/* Current Reading */}
           <div className="space-y-4">
             <h3 className="text-lg font-semibold">Leyendo ahora</h3>
-            <div className="flex gap-4 rounded-2xl bg-card p-4 shadow-sm">
-              <div className="h-24 w-16 shrink-0 overflow-hidden rounded-lg bg-muted">
-                <img src="/fantasy-book-cover.png" alt="Portada del libro" className="h-full w-full object-cover" />
-              </div>
-              <div className="flex-1 space-y-2">
-                <div>
-                  <h4 className="font-semibold">El Nombre del Viento</h4>
-                  <p className="text-sm text-muted-foreground">Patrick Rothfuss</p>
-                </div>
-                <div className="space-y-1">
-                  <div className="flex justify-between text-xs">
-                    <span className="text-muted-foreground">Progreso</span>
-                    <span className="font-medium">234/722 páginas</span>
+            {currentBook ? (
+              <Link href={`/reading-plan/${currentBook.id}`}>
+                <div className="flex gap-4 rounded-2xl bg-card p-4 shadow-sm transition-all hover:shadow-md cursor-pointer">
+                  {currentBook.cover ? (
+                    <div className="h-24 w-16 shrink-0 overflow-hidden rounded-lg bg-muted">
+                      <img src={currentBook.cover} alt={currentBook.title} className="h-full w-full object-cover" />
+                    </div>
+                  ) : (
+                    <div className="h-24 w-16 shrink-0 overflow-hidden rounded-lg bg-muted flex items-center justify-center">
+                      <BookOpen className="h-8 w-8 text-muted-foreground" />
+                    </div>
+                  )}
+                  <div className="flex-1 space-y-2">
+                    <div>
+                      <h4 className="font-semibold hover:text-primary transition-colors">{currentBook.title}</h4>
+                      <p className="text-sm text-muted-foreground">{currentBook.author}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">Progreso</span>
+                        <span className="font-medium">
+                          {currentBook.currentPage}/{currentBook.totalPages || 0} páginas ({currentBook.progress}%)
+                        </span>
+                      </div>
+                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                        <div 
+                          className="h-full rounded-full bg-primary transition-all" 
+                          style={{ width: `${currentBook.progress}%` }}
+                        />
+                      </div>
+                    </div>
                   </div>
-                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                    <div className="h-full w-[32%] rounded-full bg-primary transition-all" />
+                </div>
+              </Link>
+            ) : (
+              <div className="flex gap-4 rounded-2xl bg-card p-4 shadow-sm">
+                <div className="h-24 w-16 shrink-0 overflow-hidden rounded-lg bg-muted flex items-center justify-center">
+                  <BookOpen className="h-8 w-8 text-muted-foreground" />
+                </div>
+                <div className="flex-1 space-y-2">
+                  <div>
+                    <h4 className="font-semibold text-muted-foreground">No hay libros en progreso</h4>
+                    <p className="text-sm text-muted-foreground">Agrega un libro a tu plan de lectura para comenzar</p>
                   </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
       </main>

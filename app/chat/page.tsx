@@ -7,7 +7,6 @@ import {
   Send,
   Sparkles,
   BookOpen,
-  Target,
   ShoppingCart,
   Loader2,
   BookmarkPlus,
@@ -52,8 +51,8 @@ export default function ChatPage() {
     isAuthenticated,
     onboarding,
     isLoading: authLoading,
-    addRecommendation,
     recommendations,
+    addRecommendation,
   } = useAuth();
   const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([]);
@@ -94,7 +93,7 @@ export default function ChatPage() {
           id: "1",
           role: "assistant",
           content:
-            "¡Hola! Soy tu asistente literario. Puedo ayudarte a encontrar el libro perfecto, crear un plan de lectura o responder cualquier pregunta sobre libros. ¿En qué te puedo ayudar hoy?",
+            "¡Hola! Soy tu asistente literario. Puedo ayudarte a encontrar el libro perfecto o responder cualquier pregunta sobre libros. ¿En qué te puedo ayudar hoy?",
           timestamp: new Date(),
         },
       ]);
@@ -103,7 +102,6 @@ export default function ChatPage() {
 
   const quickActions = [
     { icon: BookOpen, label: "Recomendar un libro", color: "text-primary" },
-    { icon: Target, label: "Crear un plan", color: "text-success" },
     {
       icon: ShoppingCart,
       label: "Comprar libro",
@@ -215,18 +213,20 @@ export default function ChatPage() {
                 message.role === "user" ? "items-end" : "items-start"
               }`}
             >
-              {/* Exibir mensagem de texto apenas se não houver livros */}
-              {(!message.books || message.books.length === 0) && (
-                <div
-                  className={`max-w-[80%] rounded-3xl px-5 py-3 ${
-                    message.role === "user"
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-card text-card-foreground shadow-sm"
-                  }`}
-                >
-                  <p className="text-sm leading-relaxed">{message.content}</p>
-                </div>
-              )}
+              {/* Exibir mensagem de texto apenas se não houver livros E se a mensagem não estiver vazia */}
+              {(!message.books || message.books.length === 0) &&
+                message.content &&
+                message.content.trim() !== "" && (
+                  <div
+                    className={`max-w-[80%] rounded-3xl px-5 py-3 ${
+                      message.role === "user"
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-card text-card-foreground shadow-sm"
+                    }`}
+                  >
+                    <p className="text-sm leading-relaxed">{message.content}</p>
+                  </div>
+                )}
 
               {/* Exibir livros se houver */}
               {(message.books && message.books.length > 0) ||
@@ -247,7 +247,7 @@ export default function ChatPage() {
                           >
                             <div className="flex gap-4 p-4">
                               {book.cover && (
-                                <div className="h-32 w-24 shrink-0 overflow-hidden rounded-lg bg-muted">
+                                <div className="h-40 w-28 shrink-0 overflow-hidden rounded-xl bg-muted shadow-md">
                                   <img
                                     src={book.cover}
                                     alt={book.title}
@@ -255,21 +255,21 @@ export default function ChatPage() {
                                   />
                                 </div>
                               )}
-                              <div className="flex-1 min-w-0 space-y-2">
+                              <div className="flex-1 min-w-0 space-y-3">
                                 <div>
-                                  <h3 className="font-semibold text-sm leading-tight">
+                                  <h3 className="font-bold text-base leading-tight mb-1">
                                     {book.title}
                                   </h3>
-                                  <p className="text-xs text-muted-foreground mt-1">
+                                  <p className="text-sm text-foreground mb-1">
                                     {book.author}
                                   </p>
                                   {book.genre && (
-                                    <p className="text-xs text-muted-foreground">
+                                    <p className="text-sm text-muted-foreground mb-2">
                                       {book.genre}
                                     </p>
                                   )}
                                   {book.price && (
-                                    <p className="text-sm font-medium text-primary mt-1">
+                                    <p className="text-base font-semibold text-primary">
                                       {new Intl.NumberFormat("es-ES", {
                                         style: "currency",
                                         currency: book.price.currency,
@@ -281,7 +281,7 @@ export default function ChatPage() {
                                   <Button
                                     variant="outline"
                                     size="sm"
-                                    className="h-8 text-xs gap-1.5"
+                                    className="h-9 text-sm gap-2"
                                     onClick={async () => {
                                       try {
                                         // Salvar no localStorage do usuário via contexto
@@ -328,32 +328,52 @@ export default function ChatPage() {
                                       }
                                     }}
                                   >
-                                    <BookmarkPlus className="h-3.5 w-3.5" />
+                                    <BookmarkPlus className="h-4 w-4" />
                                     Agregar
                                   </Button>
-                                  {book.buyLink && (
+                                  {book.buyLink ? (
                                     <Button
                                       variant="outline"
                                       size="sm"
-                                      className="h-8 text-xs gap-1.5"
+                                      className="h-9 text-sm gap-2"
                                       onClick={() =>
                                         window.open(book.buyLink, "_blank")
                                       }
                                     >
-                                      <ShoppingCart className="h-3.5 w-3.5" />
+                                      <ShoppingCart className="h-4 w-4" />
+                                      Comprar
+                                    </Button>
+                                  ) : (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-9 text-sm gap-2"
+                                      disabled
+                                    >
+                                      <ShoppingCart className="h-4 w-4" />
                                       Comprar
                                     </Button>
                                   )}
-                                  {book.previewLink && (
+                                  {book.previewLink ? (
                                     <Button
-                                      variant="ghost"
+                                      variant="outline"
                                       size="sm"
-                                      className="h-8 text-xs gap-1.5"
+                                      className="h-9 text-sm gap-2"
                                       onClick={() =>
                                         window.open(book.previewLink, "_blank")
                                       }
                                     >
-                                      <ExternalLink className="h-3.5 w-3.5" />
+                                      <ExternalLink className="h-4 w-4" />
+                                      Ver
+                                    </Button>
+                                  ) : (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-9 text-sm gap-2"
+                                      disabled
+                                    >
+                                      <ExternalLink className="h-4 w-4" />
                                       Ver
                                     </Button>
                                   )}
@@ -362,8 +382,8 @@ export default function ChatPage() {
                             </div>
                             {/* Container para a sinopse abaixo das informações */}
                             {book.description && (
-                              <div className="px-4 pb-4 pt-0 border-t bg-muted/30">
-                                <p className="text-xs text-muted-foreground leading-relaxed">
+                              <div className="px-4 pb-4 pt-3 border-t bg-muted/20">
+                                <p className="text-sm text-muted-foreground leading-relaxed">
                                   {book.description.length > 300
                                     ? `${book.description.substring(0, 300)}...`
                                     : book.description}

@@ -21,6 +21,7 @@ import {
   hasCompletedOnboarding,
   getUserRecommendations,
   addRecommendationToUser,
+  removeRecommendation,
   getReadingPlans,
   addBookToReadingPlan,
   isBookInReadingPlan,
@@ -41,6 +42,7 @@ interface AuthContextType {
   logout: () => void;
   updateOnboarding: (data: OnboardingData) => void;
   addRecommendation: (book: Recommendation) => boolean;
+  removeRecommendation: (bookId: string) => boolean;
   refreshRecommendations: () => void;
   addToReadingPlan: (book: Recommendation) => boolean;
   isInReadingPlan: (bookId: string) => boolean;
@@ -131,6 +133,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loadRecommendations();
   };
 
+  const removeRecommendationFromUser = (bookId: string): boolean => {
+    const removed = removeRecommendation(bookId);
+    if (removed) {
+      loadRecommendations();
+    }
+    return removed;
+  };
+
   const addToReadingPlan = (book: Recommendation): boolean => {
     const added = addBookToReadingPlan(book);
     if (added) {
@@ -163,6 +173,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     logout,
     updateOnboarding,
     addRecommendation,
+    removeRecommendation: removeRecommendationFromUser,
     refreshRecommendations,
     addToReadingPlan,
     isInReadingPlan,

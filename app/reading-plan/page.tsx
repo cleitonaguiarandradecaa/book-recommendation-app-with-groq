@@ -8,11 +8,36 @@ import { useAuth } from "@/contexts/auth-context"
 import type { ReadingPlan } from "@/lib/auth"
 
 export default function ReadingPlanPage() {
-  const { readingPlans } = useAuth()
+  const { readingPlans, refreshReadingPlans } = useAuth()
   const [plans, setPlans] = useState<ReadingPlan[]>([])
 
+  // Recarregar planos quando o componente montar
   useEffect(() => {
-    setPlans(readingPlans || [])
+    refreshReadingPlans()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // Apenas na montagem inicial
+
+  useEffect(() => {
+    // Ordenar planos: não concluídos primeiro, concluídos no final (ordenados por data de conclusão, mais recente primeiro)
+    const sortedPlans = [...(readingPlans || [])].sort((a, b) => {
+      const aCompleted = a.progress === 100
+      const bCompleted = b.progress === 100
+
+      // Se ambos são concluídos ou ambos não são concluídos
+      if (aCompleted === bCompleted) {
+        if (aCompleted && a.completedAt && b.completedAt) {
+          // Ambos concluídos: ordenar por data de conclusão (mais recente primeiro)
+          return new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime()
+        }
+        // Ambos não concluídos: manter ordem original
+        return 0
+      }
+
+      // Se apenas um é concluído, o não concluído vem primeiro
+      return aCompleted ? 1 : -1
+    })
+
+    setPlans(sortedPlans)
   }, [readingPlans])
 
   // Calcular estatísticas gerais

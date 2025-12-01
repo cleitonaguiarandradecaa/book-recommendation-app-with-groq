@@ -56,6 +56,7 @@ export interface ReadingPlan {
   daysLeft?: number
   steps?: PlanStep[]
   planGenerated?: boolean
+  completedAt?: string // Data de conclusão do livro (quando progress === 100)
 }
 
 export interface UserData {
@@ -248,7 +249,18 @@ export function updateReadingPlan(planId: string, updates: Partial<ReadingPlan>)
     return false
   }
 
-  userData.readingPlans[index] = { ...userData.readingPlans[index], ...updates }
+  const plan = userData.readingPlans[index]
+  const updatedPlan = { ...plan, ...updates }
+
+  // Marcar data de conclusão se o progresso foi atualizado para 100%
+  if (updatedPlan.progress === 100 && !updatedPlan.completedAt) {
+    updatedPlan.completedAt = new Date().toISOString()
+  } else if (updatedPlan.progress !== undefined && updatedPlan.progress < 100 && updatedPlan.completedAt) {
+    // Se o progresso foi atualizado para menos de 100, remover a data de conclusão
+    delete updatedPlan.completedAt
+  }
+
+  userData.readingPlans[index] = updatedPlan
   saveUserData(userData)
   return true
 }
@@ -280,9 +292,64 @@ export function updatePlanStep(planId: string, stepId: string, completed: boolea
   const completedSteps = plan.steps.filter((s) => s.completed).length
   plan.progress = plan.steps.length > 0 ? Math.round((completedSteps / plan.steps.length) * 100) : 0
 
-  // Atualizar página atual baseado no progresso
-  if (plan.totalPages) {
+  // Atualizar página atual baseado nas etapas completadas e suas páginas
+  if (plan.steps && plan.steps.length > 0) {
+    // Tentar calcular baseado nas páginas das etapas completadas
+    let calculatedPage = 0
+
+    // Ordenar etapas por ordem (assumindo que estão em ordem sequencial)
+    const sortedSteps = [...plan.steps].sort((a, b) => {
+      // Extrair número inicial das páginas para ordenar
+      const getPageStart = (pages: string | undefined) => {
+        if (!pages) return 0
+        const match = pages.match(/(\d+)/)
+        return match ? parseInt(match[1]) : 0
+      }
+      return getPageStart(a.pages) - getPageStart(b.pages)
+    })
+
+    // Encontrar a última etapa completada
+    let lastCompletedIndex = -1
+    for (let i = 0; i < sortedSteps.length; i++) {
+      if (sortedSteps[i].completed) {
+        lastCompletedIndex = i
+      }
+    }
+
+    if (lastCompletedIndex >= 0) {
+      // Pegar a última etapa completada e extrair o número final de páginas
+      const lastCompletedStep = sortedSteps[lastCompletedIndex]
+      if (lastCompletedStep.pages) {
+        const pageRange = lastCompletedStep.pages.match(/(\d+)\s*-\s*(\d+)/)
+        if (pageRange) {
+          calculatedPage = parseInt(pageRange[2]) // Página final da última etapa completada
+        } else {
+          // Se não houver range, tentar pegar o único número
+          const singlePage = lastCompletedStep.pages.match(/(\d+)/)
+          if (singlePage) {
+            calculatedPage = parseInt(singlePage[1])
+          }
+        }
+      }
+    }
+
+    // Se não conseguiu calcular pelas etapas, usar cálculo por progresso
+    if (calculatedPage === 0 && plan.totalPages) {
+      calculatedPage = Math.round((plan.progress / 100) * plan.totalPages)
+    }
+
+    plan.currentPage = calculatedPage
+  } else if (plan.totalPages) {
+    // Fallback: calcular baseado apenas no progresso se não houver etapas
     plan.currentPage = Math.round((plan.progress / 100) * plan.totalPages)
+  }
+
+  // Marcar data de conclusão se o livro foi completado
+  if (plan.progress === 100 && !plan.completedAt) {
+    plan.completedAt = new Date().toISOString()
+  } else if (plan.progress < 100 && plan.completedAt) {
+    // Se o progresso voltar a ser menor que 100, remover a data de conclusão
+    delete plan.completedAt
   }
 
   saveUserData(userData)
