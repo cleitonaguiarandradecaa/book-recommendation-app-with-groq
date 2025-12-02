@@ -9,40 +9,6 @@ import { useAuth } from "@/contexts/auth-context"
 import type { Recommendation } from "@/lib/auth"
 import { toast } from "@/hooks/use-toast"
 
-// Recomendaciones mock (mesmas da página de recomendações)
-const MOCK_RECOMMENDATIONS: Recommendation[] = [
-  {
-    id: "1",
-    title: "El Nombre del Viento",
-    author: "Patrick Rothfuss",
-    genre: "Fantasía",
-    pages: 722,
-    reason: "Porque te gustan las historias épicas y complejas",
-    level: "Intermedio",
-    cover: "/fantasy-book-cover-red.jpg",
-  },
-  {
-    id: "2",
-    title: "Cien Años de Soledad",
-    author: "Gabriel García Márquez",
-    genre: "Realismo mágico",
-    pages: 471,
-    reason: "Por tu interés en historias profundas con múltiples generaciones",
-    level: "Avanzado",
-    cover: "/classic-literature-book-cover-yellow.jpg",
-  },
-  {
-    id: "3",
-    title: "La Guía del Autoestopista Galáctico",
-    author: "Douglas Adams",
-    genre: "Ciencia ficción / Humor",
-    pages: 384,
-    reason: "Combina ciencia ficción con humor, ideal para tus gustos relajados",
-    level: "Intermedio",
-    cover: "/science-fiction-book-cover-orange.jpg",
-  },
-]
-
 interface BookDetails extends Recommendation {
   rating?: number
   publishedDate?: string
@@ -53,11 +19,12 @@ interface BookDetails extends Recommendation {
 export default function BookDetailPage() {
   const params = useParams()
   const bookId = params?.id as string
-  const { recommendations, addToReadingPlan, isInReadingPlan, refreshReadingPlans } = useAuth()
+  const { recommendations, addToReadingPlan, isInReadingPlan, refreshReadingPlans, toggleFavorite, isBookFavorite } = useAuth()
   const [book, setBook] = useState<BookDetails | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isInPlan, setIsInPlan] = useState(false)
+  const [isFav, setIsFav] = useState(false)
 
   useEffect(() => {
     const loadBookDetails = async () => {
@@ -67,15 +34,7 @@ export default function BookDetailPage() {
         setLoading(true)
         setError(null)
 
-        // Primeiro, tentar encontrar o livro nas recomendações mock
-        const mockBook = MOCK_RECOMMENDATIONS.find((r) => String(r.id) === String(bookId))
-        if (mockBook) {
-          setBook(mockBook as BookDetails)
-          setLoading(false)
-          return
-        }
-
-        // Depois, tentar encontrar o livro nas recomendações do usuário
+        // Primeiro, tentar encontrar o livro nas recomendações do usuário
         const userBook = recommendations?.find((r) => String(r.id) === String(bookId))
         
         if (userBook) {
@@ -89,7 +48,7 @@ export default function BookDetailPage() {
         const response = await fetch(`https://www.googleapis.com/books/v1/volumes/${bookId}`)
         
         if (!response.ok) {
-          throw new Error("Libro no encontrado")
+          throw new Error("Livro não encontrado")
         }
 
         const data = await response.json()
@@ -123,7 +82,7 @@ export default function BookDetailPage() {
         setBook(bookData)
       } catch (err) {
         console.error("Error loading book:", err)
-        setError("No se pudo cargar la información del libro")
+        setError("Não foi possível carregar as informações do livro")
       } finally {
         setLoading(false)
       }
@@ -131,11 +90,12 @@ export default function BookDetailPage() {
 
     loadBookDetails()
     
-    // Verificar se o livro está no plano
+    // Verificar se o livro está no plano e nos favoritos
     if (bookId) {
       setIsInPlan(isInReadingPlan(bookId))
+      setIsFav(isBookFavorite(bookId))
     }
-  }, [bookId, recommendations, isInReadingPlan])
+  }, [bookId, recommendations, isInReadingPlan, isBookFavorite])
 
   if (loading) {
     return (
@@ -160,10 +120,10 @@ export default function BookDetailPage() {
         </header>
         <main className="flex flex-1 items-center justify-center p-6">
           <div className="text-center">
-            <p className="text-lg font-semibold">{error || "Libro no encontrado"}</p>
+            <p className="text-lg font-semibold">{error || "Livro não encontrado"}</p>
             <Link href="/recommendations">
               <Button variant="outline" className="mt-4">
-                Volver a recomendaciones
+                Voltar às recomendações
               </Button>
             </Link>
           </div>
@@ -186,8 +146,24 @@ export default function BookDetailPage() {
             </button>
           </Link>
           <div className="flex gap-2">
-            <button className="flex h-10 w-10 items-center justify-center rounded-full hover:bg-muted transition-colors">
-              <Heart className="h-5 w-5" strokeWidth={1.5} />
+            <button
+              className={`flex h-10 w-10 items-center justify-center rounded-full transition-colors ${
+                isFav ? "text-destructive hover:bg-destructive/10" : "hover:bg-muted"
+              }`}
+              onClick={() => {
+                if (book) {
+                  const newFavState = toggleFavorite(book)
+                  setIsFav(newFavState)
+                  toast({
+                    title: newFavState ? "Adicionado aos favoritos" : "Removido dos favoritos",
+                    description: newFavState
+                      ? `${book.title} foi adicionado aos seus favoritos`
+                      : `${book.title} foi removido dos seus favoritos`,
+                  })
+                }
+              }}
+            >
+              <Heart className={`h-5 w-5 ${isFav ? "fill-current" : ""}`} strokeWidth={1.5} />
             </button>
             <button className="flex h-10 w-10 items-center justify-center rounded-full hover:bg-muted transition-colors">
               <Share2 className="h-5 w-5" strokeWidth={1.5} />
@@ -221,7 +197,7 @@ export default function BookDetailPage() {
               )}
               {book.level && (
                 <span className="rounded-full bg-success/10 px-4 py-1.5 text-sm font-medium text-[color:var(--success)]">
-                  Nivel: {book.level}
+                  Nível: {book.level}
                 </span>
               )}
             </div>
@@ -232,7 +208,7 @@ export default function BookDetailPage() {
           {/* Personalized Recommendation */}
           {book.reason && (
             <div className="rounded-3xl bg-gradient-to-br from-primary/10 to-success/10 p-6">
-              <h2 className="mb-3 text-lg font-semibold">¿Por qué te recomendamos este libro?</h2>
+              <h2 className="mb-3 text-lg font-semibold">Por que recomendamos este livro?</h2>
               <p className="leading-relaxed text-foreground/90">{book.reason}</p>
             </div>
           )}
@@ -240,7 +216,7 @@ export default function BookDetailPage() {
           {/* Synopsis */}
           {book.description && (
             <div className="space-y-3">
-              <h2 className="text-xl font-semibold">Sinopsis</h2>
+              <h2 className="text-xl font-semibold">Sinopse</h2>
               <p className="leading-relaxed text-muted-foreground whitespace-pre-line">
                 {book.description}
               </p>
@@ -253,13 +229,13 @@ export default function BookDetailPage() {
               <p className="text-2xl font-semibold text-primary">
                 {book.rating ? book.rating.toFixed(1) : "—"}
               </p>
-              <p className="text-xs text-muted-foreground">Valoración</p>
+              <p className="text-xs text-muted-foreground">Avaliação</p>
             </div>
             <div className="text-center">
               <p className="text-2xl font-semibold text-success">
                 {estimatedReadingTime ? `~${estimatedReadingTime}h` : "—"}
               </p>
-              <p className="text-xs text-muted-foreground">Tiempo lectura</p>
+              <p className="text-xs text-muted-foreground">Tempo de leitura</p>
             </div>
             <div className="text-center">
               <p className="text-2xl font-semibold text-[color:var(--chart-3)]">
@@ -286,13 +262,13 @@ export default function BookDetailPage() {
                   // Forçar atualização do contexto
                   refreshReadingPlans()
                   toast({
-                    title: "Libro agregado",
-                    description: `${book.title} ha sido agregado a tu plan de lectura`,
+                    title: "Livro adicionado",
+                    description: `${book.title} foi adicionado ao seu plano de leitura`,
                   })
                 } else {
                   toast({
-                    title: "Error",
-                    description: "No se pudo agregar el libro al plan",
+                    title: "Erro",
+                    description: "Não foi possível adicionar o livro ao plano",
                     variant: "destructive",
                   })
                 }
@@ -301,7 +277,7 @@ export default function BookDetailPage() {
             disabled={isInPlan}
           >
             <BookmarkPlus className="mr-2 h-5 w-5" strokeWidth={1.5} />
-            {isInPlan ? "Agregado a su plan" : "Agregar a mi plan"}
+            {isInPlan ? "Adicionado ao plano" : "Adicionar ao meu plano"}
           </Button>
           {book.buyLink ? (
             <Button 
@@ -311,16 +287,16 @@ export default function BookDetailPage() {
             >
               <ShoppingCart className="mr-2 h-5 w-5" strokeWidth={1.5} />
               {book.price 
-                ? `Comprar ${new Intl.NumberFormat("es-ES", {
+                ? `Comprar ${new Intl.NumberFormat("pt-BR", {
                     style: "currency",
                     currency: book.price.currency,
                   }).format(book.price.amount)}`
-                : "Comprar libro"}
+                : "Comprar livro"}
             </Button>
           ) : (
             <Button size="lg" className="flex-1 rounded-full" disabled>
               <ShoppingCart className="mr-2 h-5 w-5" strokeWidth={1.5} />
-              No disponible
+              Indisponível
             </Button>
           )}
         </div>

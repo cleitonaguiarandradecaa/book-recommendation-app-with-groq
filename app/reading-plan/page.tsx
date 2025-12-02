@@ -6,10 +6,27 @@ import { ChevronLeft, Calendar, TrendingUp, Target, Edit3, Loader2 } from "lucid
 import Link from "next/link"
 import { useAuth } from "@/contexts/auth-context"
 import type { ReadingPlan } from "@/lib/auth"
+import { toast } from "@/hooks/use-toast"
 
 export default function ReadingPlanPage() {
   const { readingPlans, refreshReadingPlans } = useAuth()
   const [plans, setPlans] = useState<ReadingPlan[]>([])
+  const [reminderTime, setReminderTime] = useState<string>(() => {
+    if (typeof window === "undefined") return "20:00"
+    try {
+      const stored = window.localStorage.getItem("lector_reminder_time")
+      return stored || "20:00"
+    } catch {
+      return "20:00"
+    }
+  })
+  const [currentTime, setCurrentTime] = useState<string>(() => {
+    const now = new Date()
+    const hours = String(now.getHours()).padStart(2, "0")
+    const minutes = String(now.getMinutes()).padStart(2, "0")
+    return `${hours}:${minutes}`
+  })
+  const [isSavingReminder, setIsSavingReminder] = useState(false)
 
   // Recarregar planos quando o componente montar
   useEffect(() => {
@@ -40,6 +57,20 @@ export default function ReadingPlanPage() {
     setPlans(sortedPlans)
   }, [readingPlans])
 
+  // Atualizar horário atual a cada minuto para comparar com o lembrete
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = new Date()
+      const hours = String(now.getHours()).padStart(2, "0")
+      const minutes = String(now.getMinutes()).padStart(2, "0")
+      setCurrentTime(`${hours}:${minutes}`)
+    }, 60_000)
+
+    return () => clearInterval(interval)
+  }, [])
+
+  const isReminderDue = reminderTime === currentTime
+
   // Calcular estatísticas gerais
   const totalProgress = plans.length > 0
     ? Math.round(plans.reduce((sum, p) => sum + p.progress, 0) / plans.length)
@@ -59,9 +90,9 @@ export default function ReadingPlanPage() {
               </button>
             </Link>
             <div>
-              <h1 className="text-lg font-semibold">Plan de Lectura</h1>
+              <h1 className="text-lg font-semibold">Plano de Leitura</h1>
               <p className="text-xs text-muted-foreground">
-                {totalBooks} {totalBooks === 1 ? "libro activo" : "libros activos"}
+                {totalBooks} {totalBooks === 1 ? "livro ativo" : "livros ativos"}
               </p>
             </div>
           </div>
@@ -77,7 +108,7 @@ export default function ReadingPlanPage() {
           {/* Overall Progress */}
           <div className="rounded-3xl bg-gradient-to-br from-success/10 to-primary/10 p-6">
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-semibold">Progreso General</h2>
+              <h2 className="text-lg font-semibold">Progresso Geral</h2>
               <TrendingUp className="h-5 w-5 text-success" strokeWidth={1.5} />
             </div>
 
@@ -115,15 +146,15 @@ export default function ReadingPlanPage() {
               <div className="grid flex-1 grid-cols-2 gap-4 pl-6">
                 <div>
                   <p className="text-2xl font-semibold">{totalBooks}</p>
-                  <p className="text-sm text-muted-foreground">Libros activos</p>
+                  <p className="text-sm text-muted-foreground">Livros ativos</p>
                 </div>
                 <div>
                   <p className="text-2xl font-semibold">{totalPagesRead}</p>
-                  <p className="text-sm text-muted-foreground">Páginas leídas</p>
+                  <p className="text-sm text-muted-foreground">Páginas lidas</p>
                 </div>
                 <div>
                   <p className="text-2xl font-semibold">{totalProgress}%</p>
-                  <p className="text-sm text-muted-foreground">Progreso general</p>
+                  <p className="text-sm text-muted-foreground">Progresso geral</p>
                 </div>
                 <div>
                   <p className="text-2xl font-semibold">{plans.filter(p => p.progress === 100).length}</p>
@@ -135,13 +166,13 @@ export default function ReadingPlanPage() {
 
           {/* Books in Plan */}
           <div className="space-y-4">
-            <h2 className="text-lg font-semibold">Tus Libros</h2>
+            <h2 className="text-lg font-semibold">Seus Livros</h2>
             {plans.length === 0 ? (
               <div className="rounded-3xl bg-card p-8 text-center shadow-sm">
-                <p className="text-muted-foreground">No tienes libros en tu plan de lectura aún.</p>
+                <p className="text-muted-foreground">Você ainda não tem livros no seu plano de leitura.</p>
                 <Link href="/recommendations">
                   <Button variant="outline" className="mt-4">
-                    Ver recomendaciones
+                    Ver recomendações
                   </Button>
                 </Link>
               </div>
@@ -170,7 +201,7 @@ export default function ReadingPlanPage() {
 
                         <div className="space-y-2">
                           <div className="flex justify-between text-xs">
-                            <span className="text-muted-foreground">Progreso</span>
+                            <span className="text-muted-foreground">Progresso</span>
                             <span className="font-medium">
                               {plan.currentPage}/{plan.totalPages || 0} páginas
                             </span>
@@ -198,15 +229,52 @@ export default function ReadingPlanPage() {
 
           {/* Reminder Settings */}
           <div className="rounded-2xl bg-card p-5 shadow-sm">
-            <h3 className="mb-3 font-semibold">Recordatorios</h3>
+            <h3 className="mb-3 font-semibold">Recordatórios</h3>
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium">Recordatorio diario</p>
-                  <p className="text-xs text-muted-foreground">20:00</p>
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex-1 space-y-1">
+                  <p className="text-sm font-medium">Lembrete diário</p>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="time"
+                      value={reminderTime}
+                      onChange={(e) => setReminderTime(e.target.value)}
+                      className="h-8 rounded-md border bg-background px-2 text-xs"
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Horário configurado: {reminderTime} · Horário atual: {currentTime}
+                  </p>
+                  {isReminderDue && (
+                    <p className="text-xs font-semibold text-[color:var(--success)]">
+                      É hora de ler! O horário do seu lembrete chegou.
+                    </p>
+                  )}
                 </div>
-                <Button size="sm" variant="outline" className="rounded-full bg-transparent">
-                  Configurar
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="rounded-full bg-transparent"
+                  disabled={isSavingReminder}
+                  onClick={() => {
+                    try {
+                      setIsSavingReminder(true)
+                      if (typeof window !== "undefined") {
+                        window.localStorage.setItem(
+                          "lector_reminder_time",
+                          reminderTime || "20:00",
+                        )
+                      }
+                      toast({
+                        title: "Lembrete salvo",
+                        description: `Seu lembrete diário foi configurado para ${reminderTime || "20:00"}.`,
+                      })
+                    } finally {
+                      setIsSavingReminder(false)
+                    }
+                  }}
+                >
+                  {isSavingReminder ? "Salvando..." : "Salvar"}
                 </Button>
               </div>
             </div>

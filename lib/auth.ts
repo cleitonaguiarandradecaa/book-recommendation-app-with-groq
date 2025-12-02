@@ -59,24 +59,53 @@ export interface ReadingPlan {
   completedAt?: string // Data de conclusão do livro (quando progress === 100)
 }
 
+export interface Favorite {
+  id: string
+  title: string
+  author: string
+  genre?: string
+  cover?: string
+  addedAt: string
+}
+
 export interface UserData {
   user: User
   onboarding: OnboardingData | null
   recommendations?: Recommendation[]
   readingPlans?: ReadingPlan[]
+  favorites?: Favorite[]
 }
 
 const STORAGE_KEY = "lector_user_data"
+const SESSION_KEY = "lector_session_email"
+
+function setItemSafe(key: string, value: string) {
+  if (typeof window !== "undefined") {
+    try {
+      localStorage.setItem(key, value)
+    } catch {
+      // Ignore storage errors (quota, private mode, etc.)
+    }
+  }
+}
+
+function removeItemSafe(key: string) {
+  if (typeof window !== "undefined") {
+    try {
+      localStorage.removeItem(key)
+    } catch {
+      // Ignore storage errors
+    }
+  }
+}
 
 export function saveUserData(userData: UserData): void {
-  if (typeof window !== "undefined") {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(userData))
-  }
+  setItemSafe(STORAGE_KEY, JSON.stringify(userData))
 }
 
 export function getUserData(): UserData | null {
   if (typeof window !== "undefined") {
-    const data = localStorage.getItem(STORAGE_KEY)
+    const data = window.localStorage.getItem(STORAGE_KEY)
     if (data) {
       try {
         return JSON.parse(data) as UserData
@@ -88,14 +117,40 @@ export function getUserData(): UserData | null {
   return null
 }
 
+export function getSessionEmail(): string | null {
+  if (typeof window !== "undefined") {
+    try {
+      return window.localStorage.getItem(SESSION_KEY)
+    } catch {
+      return null
+    }
+  }
+  return null
+}
+
+export function setSessionEmail(email: string): void {
+  setItemSafe(SESSION_KEY, email)
+}
+
+export function clearSession(): void {
+  removeItemSafe(SESSION_KEY)
+}
+
 export function isLoggedIn(): boolean {
   const data = getUserData()
-  return data !== null && data.user !== null
+  const sessionEmail = getSessionEmail()
+  return data !== null && data.user !== null && !!sessionEmail && data.user.email === sessionEmail
 }
 
 export function hasCompletedOnboarding(): boolean {
   const data = getUserData()
-  return data !== null && data.onboarding !== null
+  const sessionEmail = getSessionEmail()
+  return (
+    data !== null &&
+    data.onboarding !== null &&
+    !!sessionEmail &&
+    data.user.email === sessionEmail
+  )
 }
 
 export function saveOnboardingData(onboarding: OnboardingData): void {
@@ -106,10 +161,80 @@ export function saveOnboardingData(onboarding: OnboardingData): void {
   }
 }
 
-export function logout(): void {
-  if (typeof window !== "undefined") {
-    localStorage.removeItem(STORAGE_KEY)
+export function updateUserName(newName: string): boolean {
+  const userData = getUserData()
+  if (!userData || !userData.user) {
+    return false
   }
+
+  userData.user.name = newName
+  saveUserData(userData)
+  return true
+}
+
+export function addFavorite(book: Recommendation): boolean {
+  const userData = getUserData()
+  if (!userData) {
+    return false
+  }
+
+  if (!userData.favorites) {
+    userData.favorites = []
+  }
+
+  // Verificar se o livro já está nos favoritos
+  const exists = userData.favorites.find((f) => f.id === book.id)
+  if (exists) {
+    return false
+  }
+
+  // Adicionar aos favoritos
+  const favorite: Favorite = {
+    id: book.id,
+    title: book.title,
+    author: book.author,
+    genre: book.genre,
+    cover: book.cover,
+    addedAt: new Date().toISOString(),
+  }
+
+  userData.favorites.push(favorite)
+  saveUserData(userData)
+  return true
+}
+
+export function removeFavorite(bookId: string): boolean {
+  const userData = getUserData()
+  if (!userData || !userData.favorites) {
+    return false
+  }
+
+  const index = userData.favorites.findIndex((f) => f.id === bookId)
+  if (index === -1) {
+    return false
+  }
+
+  userData.favorites.splice(index, 1)
+  saveUserData(userData)
+  return true
+}
+
+export function getFavorites(): Favorite[] {
+  const userData = getUserData()
+  return userData?.favorites || []
+}
+
+export function isFavorite(bookId: string): boolean {
+  const userData = getUserData()
+  if (!userData || !userData.favorites) {
+    return false
+  }
+  return userData.favorites.some((f) => f.id === bookId)
+}
+
+export function logout(): void {
+  // Não apagamos mais os dados do usuário ao sair, apenas limpamos a sessão atual.
+  clearSession()
 }
 
 export function addRecommendationToUser(book: Recommendation): boolean {
@@ -169,6 +294,9 @@ export function registerUser(email: string, name: string): User {
   const userData: UserData = {
     user,
     onboarding: null,
+    recommendations: [],
+    readingPlans: [],
+    favorites: [],
   }
 
   saveUserData(userData)

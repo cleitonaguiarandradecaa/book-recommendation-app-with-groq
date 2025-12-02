@@ -22,19 +22,19 @@ export default function LoginPage() {
     setError("")
 
     if (!email.trim()) {
-      setError("El email es requerido")
+      setError("O email é obrigatório")
       return
     }
 
     if (isRegister && !name.trim()) {
-      setError("El nombre es requerido")
+      setError("O nome é obrigatório")
       return
     }
 
     // Validar formato de email básico
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     if (!emailRegex.test(email)) {
-      setError("Por favor ingresa un email válido")
+      setError("Por favor, insira um email válido")
       return
     }
 
@@ -42,19 +42,32 @@ export default function LoginPage() {
       if (isRegister) {
         register(email, name)
       } else {
-        // Para login, verificar se o usuário existe
-        const userData = localStorage.getItem("lector_user_data")
-        if (!userData) {
-          setError("No existe una cuenta con este email. Por favor regístrate.")
+        // Para login, verificar se o usuário existe e o email corresponde
+        const raw = localStorage.getItem("lector_user_data")
+        if (!raw) {
+          setError("Não existe uma conta com este email. Por favor, faça o cadastro.")
           return
         }
-        login(email, name || "Usuario")
+
+        try {
+          const stored = JSON.parse(raw)
+          const storedEmail = stored?.user?.email
+          if (!storedEmail || storedEmail !== email) {
+            setError("Não existe uma conta com este email. Por favor, faça o cadastro.")
+            return
+          }
+        } catch {
+          setError("Não foi possível ler os dados salvos. Tente cadastrar-se novamente.")
+          return
+        }
+
+        login(email, name || "Usuário")
       }
 
-      // Redirigir al onboarding o home según corresponda
+      // Redirecionar para onboarding ou home, conforme necessário
       router.push("/")
     } catch (err) {
-      setError("Ocurrió un error. Por favor intenta de nuevo.")
+      setError("Ocorreu um erro. Por favor, tente novamente.")
     }
   }
 
@@ -73,12 +86,12 @@ export default function LoginPage() {
           </div>
           <div>
             <h1 className="text-3xl font-semibold tracking-tight">
-              {isRegister ? "Crear cuenta" : "Iniciar sesión"}
+              {isRegister ? "Criar conta" : "Iniciar sessão"}
             </h1>
             <p className="text-muted-foreground mt-2">
               {isRegister
-                ? "Comienza tu viaje literario"
-                : "Bienvenido de vuelta a Lector"}
+                ? "Comece sua jornada literária"
+                : "Bem-vindo de volta ao Lector"}
             </p>
           </div>
         </div>
@@ -87,11 +100,11 @@ export default function LoginPage() {
         <form onSubmit={handleSubmit} className="space-y-4">
           {isRegister && (
             <div className="space-y-2">
-              <Label htmlFor="name">Nombre</Label>
+              <Label htmlFor="name">Nome</Label>
               <Input
                 id="name"
                 type="text"
-                placeholder="Tu nombre"
+                placeholder="Seu nome"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
@@ -118,7 +131,7 @@ export default function LoginPage() {
           )}
 
           <Button type="submit" size="lg" className="w-full rounded-full">
-            {isRegister ? "Crear cuenta" : "Iniciar sesión"}
+            {isRegister ? "Criar conta" : "Iniciar sessão"}
           </Button>
         </form>
 
@@ -133,8 +146,8 @@ export default function LoginPage() {
             className="text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
             {isRegister
-              ? "¿Ya tienes una cuenta? Inicia sesión"
-              : "¿No tienes una cuenta? Regístrate"}
+              ? "Já tem uma conta? Inicie sessão"
+              : "Não tem uma conta? Cadastre-se"}
           </button>
         </div>
       </div>

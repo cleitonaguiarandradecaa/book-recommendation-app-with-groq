@@ -17,8 +17,6 @@ import {
   saveUserData,
   saveOnboardingData,
   logout as logoutUser,
-  isLoggedIn,
-  hasCompletedOnboarding,
   getUserRecommendations,
   addRecommendationToUser,
   removeRecommendation,
@@ -27,6 +25,15 @@ import {
   isBookInReadingPlan,
   updateReadingPlan,
   updatePlanStep,
+  updateUserName,
+  addFavorite,
+  removeFavorite,
+  getFavorites,
+  isFavorite,
+  getSessionEmail,
+  setSessionEmail,
+  clearSession,
+  type Favorite,
 } from "@/lib/auth";
 
 interface AuthContextType {
@@ -34,6 +41,7 @@ interface AuthContextType {
   onboarding: OnboardingData | null;
   recommendations: Recommendation[];
   readingPlans: ReadingPlan[];
+  favorites: Favorite[];
   isLoading: boolean;
   isAuthenticated: boolean;
   onboardingComplete: boolean;
@@ -41,12 +49,16 @@ interface AuthContextType {
   register: (email: string, name: string) => void;
   logout: () => void;
   updateOnboarding: (data: OnboardingData) => void;
+  updateUser: (name: string) => boolean;
   addRecommendation: (book: Recommendation) => boolean;
   removeRecommendation: (bookId: string) => boolean;
   refreshRecommendations: () => void;
   addToReadingPlan: (book: Recommendation) => boolean;
   isInReadingPlan: (bookId: string) => boolean;
   refreshReadingPlans: () => void;
+  toggleFavorite: (book: Recommendation) => boolean;
+  isBookFavorite: (bookId: string) => boolean;
+  refreshFavorites: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -56,6 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [onboarding, setOnboarding] = useState<OnboardingData | null>(null);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [readingPlans, setReadingPlans] = useState<ReadingPlan[]>([]);
+  const [favorites, setFavorites] = useState<Favorite[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
 
@@ -71,12 +84,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Carregar dados do localStorage ao montar
     const userData = getUserData();
-    if (userData) {
+    const sessionEmail = getSessionEmail();
+
+    if (userData && sessionEmail && userData.user.email === sessionEmail) {
+      // Há uma sessão ativa para este usuário
       setUser(userData.user);
       setOnboarding(userData.onboarding);
       setRecommendations(userData.recommendations || []);
       const plans = getReadingPlans();
       setReadingPlans(plans);
+      const favs = getFavorites();
+      setFavorites(favs);
     }
     setIsLoading(false);
   }, []);
@@ -84,41 +102,71 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = (email: string, name: string) => {
     const userData = getUserData();
     if (userData && userData.user.email === email) {
+      // Login em usuário existente: restaurar dados salvos
+      setSessionEmail(email);
       setUser(userData.user);
       setOnboarding(userData.onboarding);
-    } else {
-      // Criar novo usuário
-      const newUser: User = {
-        id: `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        email,
-        name,
-        createdAt: new Date().toISOString(),
-      };
-
-      const newUserData: UserData = {
-        user: newUser,
-        onboarding: null,
-      };
-
-      saveUserData(newUserData);
-      setUser(newUser);
-      setOnboarding(null);
+      setRecommendations(userData.recommendations || []);
+      const plans = getReadingPlans();
+      setReadingPlans(plans);
+      const favs = getFavorites();
+      setFavorites(favs);
+      return;
     }
+
+    // Se não existe usuário salvo para esse email, não fazer login.
+    // A tela de login deve forçar o fluxo de cadastro nesse caso.
   };
 
   const register = (email: string, name: string) => {
-    login(email, name); // Mesma lógica para registro
+    // Cadastro sempre cria/atualiza o usuário salvo para este email
+    const newUser: User = {
+      id: `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      email,
+      name,
+      createdAt: new Date().toISOString(),
+    };
+
+    const newUserData: UserData = {
+      user: newUser,
+      onboarding: null,
+      recommendations: [],
+      readingPlans: [],
+      favorites: [],
+    };
+
+    saveUserData(newUserData);
+    setSessionEmail(email);
+    setUser(newUser);
+    setOnboarding(null);
+    setRecommendations([]);
+    setReadingPlans([]);
+    setFavorites([]);
   };
 
   const logout = () => {
     logoutUser();
     setUser(null);
     setOnboarding(null);
+    setRecommendations([]);
+    setReadingPlans([]);
+    setFavorites([]);
   };
 
   const updateOnboarding = (data: OnboardingData) => {
     saveOnboardingData(data);
     setOnboarding(data);
+  };
+
+  const updateUser = (name: string): boolean => {
+    const updated = updateUserName(name);
+    if (updated) {
+      const userData = getUserData();
+      if (userData) {
+        setUser(userData.user);
+      }
+    }
+    return updated;
   };
 
   const addRecommendation = (book: Recommendation): boolean => {
@@ -159,12 +207,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setReadingPlans(plans);
   };
 
+  const toggleFavorite = (book: Recommendation): boolean => {
+    const isFav = isFavorite(book.id);
+    if (isFav) {
+      const removed = removeFavorite(book.id);
+      if (removed) {
+        const favs = getFavorites();
+        setFavorites(favs);
+      }
+      return false;
+    } else {
+      const added = addFavorite(book);
+      if (added) {
+        const favs = getFavorites();
+        setFavorites(favs);
+      }
+      return added;
+    }
+  };
+
+  const isBookFavorite = (bookId: string): boolean => {
+    return isFavorite(bookId);
+  };
+
+  const refreshFavorites = () => {
+    const favs = getFavorites();
+    setFavorites(favs);
+  };
+
   // Evitar problemas de hidratação retornando valores consistentes no primeiro render
   const value = {
     user: mounted ? user : null,
     onboarding: mounted ? onboarding : null,
     recommendations: mounted ? recommendations : [],
     readingPlans: mounted ? readingPlans : [],
+    favorites: mounted ? favorites : [],
     isLoading: !mounted || isLoading,
     isAuthenticated: mounted && user !== null,
     onboardingComplete: mounted && onboarding !== null,
@@ -172,12 +249,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     register,
     logout,
     updateOnboarding,
+    updateUser,
     addRecommendation,
     removeRecommendation: removeRecommendationFromUser,
     refreshRecommendations,
     addToReadingPlan,
     isInReadingPlan,
     refreshReadingPlans,
+    toggleFavorite,
+    isBookFavorite,
+    refreshFavorites,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

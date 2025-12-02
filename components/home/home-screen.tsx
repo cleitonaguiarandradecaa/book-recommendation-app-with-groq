@@ -6,8 +6,8 @@ import { useAuth } from "@/contexts/auth-context"
 
 export function HomeScreen() {
   const { user, recommendations, readingPlans, isInReadingPlan, refreshReadingPlans } = useAuth()
-  const userName = user?.name || "Usuario"
-  const greeting = `¡Buen día, ${userName.split(" ")[0]}!`
+  const userName = user?.name || "Usuário"
+  const greeting = `Bom dia, ${userName.split(" ")[0]}!`
   
   // Atualizar planos quando o componente montar
   useEffect(() => {
@@ -15,13 +15,9 @@ export function HomeScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // Apenas na montagem inicial
   
-  // IDs dos livros mock
-  const MOCK_BOOK_IDS = ["1", "2", "3"]
-  
-  // Contar total de recomendações disponíveis (mock + do usuário, excluindo os que estão no plano)
-  const mockRecommendations = MOCK_BOOK_IDS.filter((id) => !isInReadingPlan(id))
+  // Contar total de recomendações disponíveis (excluindo os que estão no plano)
   const userRecommendations = (recommendations || []).filter((rec) => !isInReadingPlan(String(rec.id)))
-  const totalRecommendations = mockRecommendations.length + userRecommendations.length
+  const totalRecommendations = userRecommendations.length
 
   // Filtrar livros do plano de leitura que não estão concluídos (progress < 100), ordenados por progresso (maior primeiro)
   const activeReadingPlans = (readingPlans || [])
@@ -96,7 +92,8 @@ export function HomeScreen() {
 
       {/* Content */}
       <main className="flex-1 overflow-y-auto p-6">
-        <div className="mx-auto max-w-2xl space-y-6">
+        {/* Mantemos um espaçamento consistente entre as seções principais */}
+        <div className="mx-auto max-w-2xl space-y-8">
           {/* Assistant Card */}
           <Link href="/chat">
             <div className="group relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary/10 via-primary/5 to-success/10 p-6 transition-all hover:shadow-lg">
@@ -106,13 +103,13 @@ export function HomeScreen() {
                   <Sparkles className="h-7 w-7 text-primary-foreground" strokeWidth={1.5} />
                 </div>
                 <div className="flex-1 space-y-2">
-                  <h2 className="text-xl font-semibold">¿Qué te gustaría leer hoy?</h2>
+                  <h2 className="text-xl font-semibold">O que você gostaria de ler hoje?</h2>
                   <p className="text-sm text-muted-foreground">
-                    Pregúntame cualquier cosa sobre libros o pídeme recomendaciones personalizadas
+                    Pergunte-me qualquer coisa sobre livros ou peça recomendações personalizadas
                   </p>
                   <div className="flex gap-2 pt-2">
-                    <div className="rounded-full bg-background/60 px-3 py-1 text-xs font-medium">Recomendaciones</div>
-                    <div className="rounded-full bg-background/60 px-3 py-1 text-xs font-medium">Planes de lectura</div>
+                    <div className="rounded-full bg-background/60 px-3 py-1 text-xs font-medium">Recomendações</div>
+                    <div className="rounded-full bg-background/60 px-3 py-1 text-xs font-medium">Planos de leitura</div>
                   </div>
                 </div>
               </div>
@@ -120,34 +117,35 @@ export function HomeScreen() {
           </Link>
 
           {/* Quick Actions */}
-          <div className="grid grid-cols-2" style={{ gap: '16px' }}>
-            <Link href="/recommendations">
-              <button className="flex flex-col items-start gap-3 rounded-2xl bg-card p-5 text-left shadow-sm transition-all hover:shadow-md hover:scale-[0.98] relative">
+          {/* Botões lado a lado com 16px (gap-4) entre eles */}
+          <div className="mt-6 flex flex-row gap-4">
+            <Link href="/recommendations" className="flex-1">
+              <button className="flex flex-col items-start gap-3 rounded-2xl bg-card p-5 text-left shadow-sm transition-all hover:shadow-md hover:scale-[0.98] relative w-full">
                 <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
                   <BookOpen className="h-6 w-6 text-primary" strokeWidth={1.5} />
                 </div>
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
-                    <h3 className="font-semibold">Recomendaciones</h3>
+                    <h3 className="font-semibold">Recomendações</h3>
                     {totalRecommendations > 0 && (
                       <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-xs font-medium text-primary-foreground">
                         {totalRecommendations}
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-muted-foreground">Ver sugerencias</p>
+                  <p className="text-xs text-muted-foreground">Ver sugestões</p>
                 </div>
               </button>
             </Link>
 
-            <Link href="/reading-plan">
-              <button className="flex flex-col items-start gap-3 rounded-2xl bg-card p-5 text-left shadow-sm transition-all hover:shadow-md hover:scale-[0.98]">
+            <Link href="/reading-plan" className="flex-1">
+              <button className="flex flex-col items-start gap-3 rounded-2xl bg-card p-5 text-left shadow-sm transition-all hover:shadow-md hover:scale-[0.98] w-full">
                 <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-success/10">
                   <Target className="h-6 w-6 text-[color:var(--success)]" strokeWidth={1.5} />
                 </div>
                 <div>
-                  <h3 className="font-semibold">Plan de Lectura</h3>
-                  <p className="text-xs text-muted-foreground">Ver progreso</p>
+                  <h3 className="font-semibold">Plano de Leitura</h3>
+                  <p className="text-xs text-muted-foreground">Ver progresso</p>
                 </div>
               </button>
             </Link>
@@ -156,14 +154,14 @@ export function HomeScreen() {
           {/* Reading Progress */}
           <div className="space-y-4 rounded-3xl bg-card p-6 shadow-sm">
             <div className="flex items-center justify-between">
-              <h3 className="font-semibold">Tu progreso de lectura</h3>
+              <h3 className="font-semibold">Seu progresso de leitura</h3>
               <TrendingUp className="h-5 w-5 text-success" strokeWidth={1.5} />
             </div>
 
             <div className="space-y-3">
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Esta semana</span>
-                <span className="font-medium">{daysThisWeek} de 7 días</span>
+                <span className="font-medium">{daysThisWeek} de 7 dias</span>
               </div>
               <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
                 <div 
@@ -175,11 +173,11 @@ export function HomeScreen() {
               <div className="grid grid-cols-3 gap-4 pt-2">
                 <div className="space-y-1">
                   <p className="text-2xl font-semibold">{totalBooks}</p>
-                  <p className="text-xs text-muted-foreground">Libros en plan</p>
+                  <p className="text-xs text-muted-foreground">Livros no plano</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-2xl font-semibold">{totalPagesRead}</p>
-                  <p className="text-xs text-muted-foreground">Páginas leídas</p>
+                  <p className="text-xs text-muted-foreground">Páginas lidas</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-2xl font-semibold">{completedBooks}</p>
@@ -191,7 +189,7 @@ export function HomeScreen() {
 
           {/* Current Reading */}
           <div className="space-y-4">
-            <h3 className="text-lg font-semibold">Leyendo ahora</h3>
+            <h3 className="text-lg font-semibold">Lendo agora</h3>
             {currentBook ? (
               <Link href={`/reading-plan/${currentBook.id}`}>
                 <div className="flex gap-4 rounded-2xl bg-card p-4 shadow-sm transition-all hover:shadow-md cursor-pointer">
@@ -211,7 +209,7 @@ export function HomeScreen() {
                     </div>
                     <div className="space-y-1">
                       <div className="flex justify-between text-xs">
-                        <span className="text-muted-foreground">Progreso</span>
+                        <span className="text-muted-foreground">Progresso</span>
                         <span className="font-medium">
                           {currentBook.currentPage}/{currentBook.totalPages || 0} páginas ({currentBook.progress}%)
                         </span>
@@ -233,8 +231,8 @@ export function HomeScreen() {
                 </div>
                 <div className="flex-1 space-y-2">
                   <div>
-                    <h4 className="font-semibold text-muted-foreground">No hay libros en progreso</h4>
-                    <p className="text-sm text-muted-foreground">Agrega un libro a tu plan de lectura para comenzar</p>
+                    <h4 className="font-semibold text-muted-foreground">Não há livros em progresso</h4>
+                    <p className="text-sm text-muted-foreground">Adicione um livro ao seu plano de leitura para começar</p>
                   </div>
                 </div>
               </div>

@@ -12,6 +12,7 @@ import {
   BookmarkPlus,
   Info,
   ExternalLink,
+  Heart,
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "@/hooks/use-toast";
@@ -52,7 +53,10 @@ export default function ChatPage() {
     onboarding,
     isLoading: authLoading,
     recommendations,
+    readingPlans,
     addRecommendation,
+    toggleFavorite,
+    isBookFavorite,
   } = useAuth();
   const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([]);
@@ -71,10 +75,10 @@ export default function ChatPage() {
       const interestsText = onboarding.interests.join(", ");
       const levelText =
         onboarding.readerLevel === "beginner"
-          ? "principiante"
+          ? "iniciante"
           : onboarding.readerLevel === "intermediate"
-          ? "intermedio"
-          : "avanzado";
+          ? "intermediário"
+          : "avançado";
 
       console.log("Chat: Carregando dados de onboarding", onboarding);
 
@@ -82,7 +86,7 @@ export default function ChatPage() {
         {
           id: "1",
           role: "assistant",
-          content: `¡Hola! Soy tu asistente literario. Veo que te gustan los géneros: ${interestsText}, tienes ${onboarding.readingTime} minutos al día para leer y tu nivel es ${levelText}. Puedo ayudarte a encontrar el libro perfecto basado en tus preferencias. ¿En qué te puedo ayudar hoy?`,
+          content: `Olá! Sou seu assistente literário. Vejo que você gosta dos gêneros: ${interestsText}, você tem ${onboarding.readingTime} minutos por dia para ler e seu nível é ${levelText}. Posso ajudá-lo a encontrar o livro perfeito baseado em suas preferências. Em que posso ajudá-lo hoje?`,
           timestamp: new Date(),
         },
       ]);
@@ -93,7 +97,7 @@ export default function ChatPage() {
           id: "1",
           role: "assistant",
           content:
-            "¡Hola! Soy tu asistente literario. Puedo ayudarte a encontrar el libro perfecto o responder cualquier pregunta sobre libros. ¿En qué te puedo ayudar hoy?",
+            "Olá! Sou seu assistente literário. Posso ajudá-lo a encontrar o livro perfeito ou responder qualquer pergunta sobre livros. Em que posso ajudá-lo hoje?",
           timestamp: new Date(),
         },
       ]);
@@ -101,12 +105,7 @@ export default function ChatPage() {
   }, [isAuthenticated, onboarding, authLoading, router]);
 
   const quickActions = [
-    { icon: BookOpen, label: "Recomendar un libro", color: "text-primary" },
-    {
-      icon: ShoppingCart,
-      label: "Comprar libro",
-      color: "text-[color:var(--chart-3)]",
-    },
+    { icon: BookOpen, label: "Recomendar um livro", color: "text-primary" },
   ];
 
   const handleSend = async () => {
@@ -143,19 +142,24 @@ export default function ChatPage() {
           ],
           onboarding: onboarding || undefined,
           userRecommendations: recommendations || [],
+          userReadingPlans: readingPlans || [],
         }),
       });
 
       if (!response.ok) {
-        throw new Error("Error al llamar /api/chat");
+        throw new Error("Erro ao chamar /api/chat");
       }
 
       const data = await response.json();
 
+      // Se há livros, não mostrar mensagem de texto (apenas os cards)
+      const hasBooks = data.books && data.books.length > 0
+      const replyContent = hasBooks ? "" : (data.reply?.trim() || "Não consegui gerar uma resposta neste momento.")
+      
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
-        content: data.reply ?? "No pude generar una respuesta en este momento.",
+        content: replyContent,
         timestamp: new Date(),
         books: data.books || [],
         searchTerms: data.searchTerms, // Termos de busca usados
@@ -170,7 +174,7 @@ export default function ChatPage() {
         id: (Date.now() + 2).toString(),
         role: "assistant",
         content:
-          "Ocurrió un error al conectar con el asistente. Verifica tu conexión o inténtalo nuevamente.",
+          "Ocorreu um erro ao conectar com o assistente. Verifique sua conexão ou tente novamente.",
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorMessage]);
@@ -194,10 +198,8 @@ export default function ChatPage() {
               <Sparkles className="h-5 w-5 text-primary" strokeWidth={1.5} />
             </div>
             <div>
-              <h1 className="font-semibold">Asistente Literario</h1>
-              <p className="text-xs text-muted-foreground">
-                Siempre disponible
-              </p>
+              <h1 className="font-semibold">Assistente Literário</h1>
+              <p className="text-xs text-muted-foreground">Sempre disponível</p>
             </div>
           </div>
         </div>
@@ -270,7 +272,7 @@ export default function ChatPage() {
                                   )}
                                   {book.price && (
                                     <p className="text-base font-semibold text-primary">
-                                      {new Intl.NumberFormat("es-ES", {
+                                      {new Intl.NumberFormat("pt-BR", {
                                         style: "currency",
                                         currency: book.price.currency,
                                       }).format(book.price.amount)}
@@ -281,14 +283,51 @@ export default function ChatPage() {
                                   <Button
                                     variant="outline"
                                     size="sm"
+                                    className={`h-9 text-sm gap-2 ${
+                                      isBookFavorite(book.id)
+                                        ? "text-destructive"
+                                        : ""
+                                    }`}
+                                    onClick={() => {
+                                      const bookForFavorite = {
+                                        ...book,
+                                        genre: book.genre || "Sem gênero",
+                                      };
+                                      const newFavState =
+                                        toggleFavorite(bookForFavorite);
+                                      toast({
+                                        title: newFavState
+                                          ? "Adicionado aos favoritos"
+                                          : "Removido dos favoritos",
+                                        description: newFavState
+                                          ? `${book.title} foi adicionado aos seus favoritos`
+                                          : `${book.title} foi removido dos seus favoritos`,
+                                      });
+                                    }}
+                                  >
+                                    <Heart
+                                      className={`h-4 w-4 ${
+                                        isBookFavorite(book.id)
+                                          ? "fill-current"
+                                          : ""
+                                      }`}
+                                    />
+                                    {isBookFavorite(book.id)
+                                      ? "Nos favoritos"
+                                      : "Favorito"}
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
                                     className="h-9 text-sm gap-2"
                                     onClick={async () => {
                                       try {
                                         // Salvar no localStorage do usuário via contexto
                                         const added = addRecommendation({
                                           ...book,
-                                          reason: "Recomendado desde el chat",
-                                          level: "Intermedio",
+                                          genre: book.genre || "Sem gênero",
+                                          reason: "Recomendado do chat",
+                                          level: "Intermediário",
                                         });
 
                                         if (added) {
@@ -308,21 +347,21 @@ export default function ChatPage() {
                                           );
 
                                           toast({
-                                            title: "Libro agregado",
-                                            description: `${book.title} ha sido agregado a tus recomendaciones`,
+                                            title: "Livro adicionado",
+                                            description: `${book.title} foi adicionado às suas recomendações`,
                                           });
                                         } else {
                                           toast({
-                                            title: "Ya existe",
-                                            description: `${book.title} ya está en tus recomendaciones`,
+                                            title: "Já existe",
+                                            description: `${book.title} já está nas suas recomendações`,
                                           });
                                         }
                                       } catch (error) {
                                         console.error(error);
                                         toast({
-                                          title: "Error",
+                                          title: "Erro",
                                           description:
-                                            "No se pudo agregar el libro",
+                                            "Não foi possível adicionar o livro",
                                           variant: "destructive",
                                         });
                                       }
@@ -413,11 +452,12 @@ export default function ChatPage() {
                               startIndex: message.nextStartIndex || 5,
                               onboarding: onboarding || undefined,
                               userRecommendations: recommendations || [],
+                              userReadingPlans: readingPlans || [],
                             }),
                           });
 
                           if (!res.ok)
-                            throw new Error("Error al cargar más libros");
+                            throw new Error("Erro ao carregar mais livros");
 
                           const data = await res.json();
 
@@ -444,8 +484,9 @@ export default function ChatPage() {
                         } catch (error) {
                           console.error(error);
                           toast({
-                            title: "Error",
-                            description: "No se pudieron cargar más libros",
+                            title: "Erro",
+                            description:
+                              "Não foi possível carregar mais livros",
                             variant: "destructive",
                           });
                         } finally {
@@ -456,10 +497,10 @@ export default function ChatPage() {
                       {loadingMoreBooks === message.id ? (
                         <>
                           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Cargando...
+                          Carregando...
                         </>
                       ) : (
-                        "Mostrar más libros"
+                        "Mostrar mais livros"
                       )}
                     </Button>
                   )}
@@ -473,7 +514,7 @@ export default function ChatPage() {
               <div className="flex items-center gap-2 rounded-3xl bg-card px-5 py-3 shadow-sm">
                 <Loader2 className="h-4 w-4 animate-spin text-primary" />
                 <span className="text-sm text-muted-foreground">
-                  Escribiendo...
+                  Digitando...
                 </span>
               </div>
             </div>
@@ -482,7 +523,7 @@ export default function ChatPage() {
           {messages.length === 1 && (
             <div className="space-y-3 pt-4">
               <p className="text-center text-sm text-muted-foreground">
-                Acciones rápidas
+                Ações rápidas
               </p>
               <div className="grid gap-2">
                 {quickActions.map((action, index) => {
@@ -522,7 +563,7 @@ export default function ChatPage() {
                   handleSend();
                 }
               }}
-              placeholder="Escribe tu mensaje..."
+              placeholder="Digite sua mensagem..."
               rows={1}
               className="w-full resize-none bg-transparent px-5 py-4 text-sm outline-none placeholder:text-muted-foreground"
             />

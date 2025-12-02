@@ -19,7 +19,7 @@ const interestToSearchTerm: Record<string, string> = {
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-    const { searchTerms, startIndex, onboarding, userRecommendations = [] } = body
+    const { searchTerms, startIndex, onboarding, userRecommendations = [], userReadingPlans = [] } = body
 
     if (!searchTerms) {
       return NextResponse.json({ error: "searchTerms is required" }, { status: 400 })
@@ -28,6 +28,8 @@ export async function POST(req: Request) {
     const start = startIndex || 0
     const maxResults = 5
     const recommendedBookIds = new Set(userRecommendations.map((r: { id: string }) => String(r.id)))
+    const readingPlanBookIds = new Set(userReadingPlans.map((p: { bookId: string }) => String(p.bookId)))
+    const excludedBookIds = new Set([...recommendedBookIds, ...readingPlanBookIds])
 
     // Buscar na Google Books API com paginação
     const googleBooksUrl = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(searchTerms)}&startIndex=${start}&maxResults=${maxResults}&langRestrict=es`
@@ -65,11 +67,11 @@ export async function POST(req: Request) {
 
       return {
         id: item.id,
-        title: volumeInfo.title || "Sin título",
-        author: (volumeInfo.authors || ["Autor desconocido"]).join(", "),
+        title: volumeInfo.title || "Sem título",
+        author: (volumeInfo.authors || ["Autor desconhecido"]).join(", "),
         description: volumeInfo.description,
         cover: cover?.replace("http://", "https://"),
-        genre: volumeInfo.categories?.[0] || volumeInfo.categories?.join(", ") || "Sin categoría",
+        genre: volumeInfo.categories?.[0] || volumeInfo.categories?.join(", ") || "Sem categoria",
         pages: volumeInfo.pageCount,
         publishedDate: volumeInfo.publishedDate,
         rating: volumeInfo.averageRating,
@@ -85,8 +87,8 @@ export async function POST(req: Request) {
       }
     })
 
-    // Filtrar livros que já estão nas recomendações
-    bookCategories = bookCategories.filter((book: any) => !recommendedBookIds.has(book.id))
+    // Filtrar livros que já estão nas recomendações ou no plano de leitura
+    bookCategories = bookCategories.filter((book: any) => !excludedBookIds.has(book.id))
 
     // Se não temos 5 livros após filtrar, buscar mais para completar
     const targetCount = 5
@@ -123,7 +125,7 @@ export async function POST(req: Request) {
             author: (volumeInfo.authors || ["Autor desconocido"]).join(", "),
             description: volumeInfo.description,
             cover: cover?.replace("http://", "https://"),
-            genre: volumeInfo.categories?.[0] || volumeInfo.categories?.join(", ") || "Sin categoría",
+            genre: volumeInfo.categories?.[0] || volumeInfo.categories?.join(", ") || "Sem categoria",
             pages: volumeInfo.pageCount,
             publishedDate: volumeInfo.publishedDate,
             rating: volumeInfo.averageRating,
@@ -139,8 +141,8 @@ export async function POST(req: Request) {
           }
         })
 
-        // Filtrar os novos livros também
-        const newFilteredBooks = additionalBooks.filter((book: any) => !recommendedBookIds.has(book.id))
+        // Filtrar os novos livros também (excluindo os que estão nas recomendações ou no plano de leitura)
+        const newFilteredBooks = additionalBooks.filter((book: any) => !excludedBookIds.has(book.id))
         bookCategories.push(...newFilteredBooks)
         currentStartIndex += additionalData.items?.length || 0
         additionalFetches++
@@ -169,7 +171,7 @@ export async function POST(req: Request) {
     })
   } catch (error) {
     console.error("Error loading more books:", error)
-    return NextResponse.json({ error: "Error al cargar más libros" }, { status: 500 })
+    return NextResponse.json({ error: "Erro ao carregar mais livros" }, { status: 500 })
   }
 }
 
