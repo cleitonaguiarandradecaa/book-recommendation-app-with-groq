@@ -116,6 +116,110 @@ const interestToSearchTerm: Record<string, string> = {
   adventure: "aventura",
 }
 
+// Mapeamento de interesses para português
+const interestToPortuguese: Record<string, string> = {
+  fantasy: "fantasia",
+  scifi: "ficção científica",
+  romance: "romance",
+  mystery: "mistério",
+  thriller: "thriller",
+  history: "história",
+  biography: "biografia",
+  psychology: "psicologia",
+  business: "negócios",
+  selfhelp: "autoajuda",
+  poetry: "poesia",
+  adventure: "aventura",
+}
+
+// Função para gerar descrição de recomendação usando IA
+async function generateRecommendationReason(
+  book: { title: string; author: string; description?: string; genre?: string },
+  userInterests: string[],
+  groqApiKey?: string
+): Promise<string> {
+  if (!groqApiKey) {
+    // Fallback sem IA
+    const interestsText = userInterests
+      .map((interest) => interestToPortuguese[interest] || interest)
+      .join(", ")
+    return `Recomendado porque corresponde aos seus interesses de leitura: ${interestsText}`
+  }
+
+  try {
+    const interestsText = userInterests
+      .map((interest) => interestToPortuguese[interest] || interest)
+      .join(", ")
+
+    // Verificar se o livro corresponde aos interesses (baseado no gênero)
+    const bookGenreLower = (book.genre || "").toLowerCase()
+    const matchesInterests = userInterests.some(interest => {
+      const interestTerm = interestToSearchTerm[interest]?.toLowerCase() || ""
+      return bookGenreLower.includes(interestTerm) || interestTerm.includes(bookGenreLower)
+    })
+
+    const prompt = matchesInterests
+      ? `Você é um assistente literário. Crie uma frase curta e personalizada (máximo 2 linhas) explicando por que este livro foi recomendado para um leitor que gosta de: ${interestsText}.
+
+Informações do livro:
+- Título: ${book.title}
+- Autor: ${book.author}
+- Gênero: ${book.genre || "Não especificado"}
+${book.description ? `- Sinopse: ${book.description.substring(0, 200)}...` : ""}
+
+Crie uma frase natural e envolvente em português brasileiro que explique por que este livro combina perfeitamente com os interesses do leitor. Seja específico e evite frases genéricas como "Recomendado do chat".
+
+Frase de recomendação:`
+      : `Você é um assistente literário. Crie uma frase curta e personalizada (máximo 2 linhas) explicando por que este livro foi recomendado, mesmo que não corresponda diretamente aos interesses do leitor (${interestsText}).
+
+Informações do livro:
+- Título: ${book.title}
+- Autor: ${book.author}
+- Gênero: ${book.genre || "Não especificado"}
+${book.description ? `- Sinopse: ${book.description.substring(0, 200)}...` : ""}
+
+Crie uma frase natural e envolvente em português brasileiro que destaque os pontos fortes do livro e por que ele pode ser interessante. Seja específico e evite frases genéricas como "Recomendado do chat".
+
+Frase de recomendação:`
+
+    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${groqApiKey}`,
+      },
+      body: JSON.stringify({
+        model: "llama-3.1-8b-instant",
+        messages: [
+          {
+            role: "system",
+            content: "Você é um assistente literário que cria descrições personalizadas de recomendações de livros em português brasileiro. Seja conciso e específico.",
+          },
+          { role: "user", content: prompt },
+        ],
+        temperature: 0.7,
+        max_tokens: 100,
+      }),
+    })
+
+    if (response.ok) {
+      const data = await response.json()
+      const generatedReason = data?.choices?.[0]?.message?.content?.trim() || ""
+      if (generatedReason) {
+        return generatedReason
+      }
+    }
+  } catch (error) {
+    console.error("Erro ao gerar descrição de recomendação:", error)
+  }
+
+  // Fallback se a IA falhar
+  const interestsText = userInterests
+    .map((interest) => interestToPortuguese[interest] || interest)
+    .join(", ")
+  return `Recomendado porque corresponde aos seus interesses de leitura: ${interestsText}`
+}
+
 // Función para extrair termos de busca usando Groq quando há características específicas
 async function extractSearchTermsWithAI(
   message: string,
@@ -350,6 +454,64 @@ export async function POST(req: Request) {
     // Obter API key do Groq para extração de características
     const groqApiKey = process.env.GROQ_API_KEY
 
+    // Tentar inferir contexto e perguntar se quer livros sobre o tema
+    // Isso funciona para mensagens que não são busca de livros
+    if (!needsBookSearch && groqApiKey) {
+      try {
+        // Usar Groq para extrair o termo principal/tema da mensagem
+        // Remover palavras comuns de busca de livros para extrair apenas o tema
+        const cleanedMessage = lastMessage
+          .toLowerCase()
+          .replace(/\b(livros?|libros?|recomendar|recomendaci[oó]n|buscar|comprar|sobre|de|com|um|uma|el|la|los|las)\b/gi, "")
+          .trim()
+        
+        if (cleanedMessage.length > 0) {
+          const contextPrompt = `Analise a seguinte mensagem do usuário e extraia o termo principal/tema sobre o qual ele está falando. 
+Responda APENAS com o termo principal em 1-3 palavras, sem explicações.
+Se não conseguir identificar um tema claro ou a mensagem for muito genérica, responda com "N/A".
+
+Mensagem original: "${lastMessage}"
+Mensagem limpa: "${cleanedMessage}"
+
+Termo principal/tema:`
+
+          const contextRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${groqApiKey}`,
+            },
+            body: JSON.stringify({
+              model: "llama-3.1-8b-instant",
+              messages: [
+                { role: "system", content: "Você é um assistente que extrai termos principais de mensagens. Responda apenas com o termo em 1-3 palavras, ou 'N/A' se não conseguir identificar." },
+                { role: "user", content: contextPrompt }
+              ],
+              temperature: 0.3,
+              max_tokens: 20,
+            }),
+          })
+
+          if (contextRes.ok) {
+            const contextData = await contextRes.json()
+            const inferredTopic = contextData?.choices?.[0]?.message?.content?.trim() || ""
+            
+            // Se conseguiu inferir um tema válido (não é "N/A" e tem conteúdo)
+            if (inferredTopic && inferredTopic.toLowerCase() !== "n/a" && inferredTopic.length > 0 && inferredTopic.length < 50) {
+              return NextResponse.json({
+                reply: `Você gostaria de livros sobre ${inferredTopic}?`,
+                books: [],
+                needsConfirmation: true,
+                inferredTopic: inferredTopic,
+              })
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Erro ao inferir contexto:", error)
+      }
+    }
+
     if (needsBookSearch) {
       try {
         // Verificar se é uma recomendação genérica (sem características específicas)
@@ -369,6 +531,64 @@ export async function POST(req: Request) {
         const isSimpleRecommendation = simpleRecommendationPatterns.some(pattern =>
           pattern.test(trimmedMessage)
         )
+        
+        // Verificar se a mensagem contém "livros" mas é ambígua (ex: "livros dragon ball z")
+        // NÃO perguntar se a mensagem já contém "livros sobre [tema]" - isso indica uma busca direta após confirmação
+        const hasBookKeyword = /livros?|libros?/i.test(lastMessage)
+        const isDirectSearchAfterConfirmation = /livros?\s+sobre/i.test(lastMessage)
+        
+        if (hasBookKeyword && !isSimpleRecommendation && !isDirectSearchAfterConfirmation && groqApiKey) {
+          try {
+            const cleanedMessage = lastMessage
+              .toLowerCase()
+              .replace(/\b(livros?|libros?|recomendar|recomendaci[oó]n|buscar|comprar|sobre|de|com|um|uma|el|la|los|las)\b/gi, "")
+              .trim()
+            
+            if (cleanedMessage.length > 0) {
+              const contextPrompt = `Extraia o termo principal/tema desta mensagem. Apenas o tema em 1-3 palavras, sem explicações.
+Se não conseguir identificar, responda "N/A".
+
+Mensagem: "${cleanedMessage}"
+
+Termo:`
+              
+              const contextRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${groqApiKey}`,
+                },
+                body: JSON.stringify({
+                  model: "llama-3.1-8b-instant",
+                  messages: [
+                    { role: "system", content: "Você extrai termos principais. Responda apenas com o termo em 1-3 palavras ou 'N/A'." },
+                    { role: "user", content: contextPrompt }
+                  ],
+                  temperature: 0.3,
+                  max_tokens: 20,
+                }),
+              })
+
+              if (contextRes.ok) {
+                const contextData = await contextRes.json()
+                const inferredTopic = contextData?.choices?.[0]?.message?.content?.trim() || ""
+                
+                if (inferredTopic && inferredTopic.toLowerCase() !== "n/a" && inferredTopic.length > 0 && inferredTopic.length < 50) {
+                  // Retornar pergunta de confirmação
+                  return NextResponse.json({
+                    reply: `Você gostaria de livros sobre ${inferredTopic}?`,
+                    books: [],
+                    needsConfirmation: true,
+                    inferredTopic: inferredTopic,
+                  })
+                }
+              }
+            }
+          } catch (error) {
+            console.error("Erro ao inferir tema de busca ambígua:", error)
+            // Continuar com a busca normal se falhar
+          }
+        }
 
         // Verificar se tem características específicas (apenas se NÃO for recomendação simples)
         const hasSpecificCharacteristics = !isSimpleRecommendation && (
@@ -401,7 +621,18 @@ export async function POST(req: Request) {
         console.log("API Chat: trimmedMessage:", trimmedMessage)
         console.log("API Chat: trimmedMessage.length:", trimmedMessage.length)
 
-        if (isGenericRequest && onboarding && onboarding.interests.length > 0) {
+        // Se a mensagem é "livros sobre [tema]", extrair o tema diretamente
+        if (isDirectSearchAfterConfirmation) {
+          const match = lastMessage.match(/livros?\s+sobre\s+(.+)/i)
+          if (match && match[1]) {
+            searchTerms = match[1].trim()
+            console.log("API Chat: Busca direta após confirmação, termo extraído:", searchTerms)
+          } else {
+            // Fallback: usar extractSearchTermsWithAI
+            searchTerms = await extractSearchTermsWithAI(lastMessage, onboarding, groqApiKey, true)
+            console.log("API Chat: Termos de busca extraídos (fallback):", searchTerms)
+          }
+        } else if (isGenericRequest && onboarding && onboarding.interests.length > 0) {
           // Usar apenas os interesses do onboarding para busca genérica
           const interestTerms = onboarding.interests
             .map((interest) => interestToSearchTerm[interest])
@@ -582,12 +813,68 @@ export async function POST(req: Request) {
           // Limitar a 5 resultados iniciais
           books = filteredBooks.slice(0, targetCount)
 
+          // Gerar descrições de recomendação usando IA para TODOS os livros recomendados do chat
+          // Se o livro corresponde aos interesses, usar os interesses na descrição
+          // Se não corresponde, gerar uma descrição genérica mas personalizada
+          if (groqApiKey && onboarding && onboarding.interests.length > 0) {
+            console.log("API Chat: Gerando descrições de recomendação para todos os livros...")
+            console.log("API Chat: Total de livros:", books.length)
+            console.log("API Chat: Livros com matchesInterests:", books.filter((b: any) => b.matchesInterests).length)
+            
+            const booksWithRecommendations = await Promise.all(
+              books.map(async (book: any) => {
+                // Gerar descrição para todos os livros, não apenas os que correspondem aos interesses
+                console.log(`API Chat: Gerando descrição para: ${book.title} (matchesInterests: ${book.matchesInterests})`)
+                try {
+                  const recommendationReason = await generateRecommendationReason(
+                    {
+                      title: book.title,
+                      author: book.author,
+                      description: book.description,
+                      genre: book.genre,
+                    },
+                    onboarding.interests,
+                    groqApiKey
+                  )
+                  console.log(`API Chat: Descrição gerada para ${book.title}:`, recommendationReason.substring(0, 50) + "...")
+                  return {
+                    ...book,
+                    recommendationReason,
+                  }
+                } catch (error) {
+                  console.error("Erro ao gerar descrição para livro:", book.title, error)
+                  // Fallback sem IA
+                  if (book.matchesInterests) {
+                    const interestsText = onboarding.interests
+                      .map((interest) => interestToPortuguese[interest] || interest)
+                      .join(", ")
+                    return {
+                      ...book,
+                      recommendationReason: `Este livro combina perfeitamente com seus interesses de leitura: ${interestsText}. Uma escolha ideal para você!`,
+                    }
+                  } else {
+                    // Para livros que não correspondem aos interesses, criar uma descrição genérica
+                    return {
+                      ...book,
+                      recommendationReason: `Recomendado especialmente para você! Este livro pode ser uma excelente adição à sua biblioteca.`,
+                    }
+                  }
+                }
+              })
+            )
+            books = booksWithRecommendations
+            console.log("API Chat: Descrições de recomendação geradas")
+            console.log("API Chat: Exemplo de recommendationReason:", books.find((b: any) => b.recommendationReason)?.recommendationReason?.substring(0, 100))
+          }
+
           // Atualizar informações de paginação
           hasMore = totalItems > books.length || filteredBooks.length > targetCount
           nextStartIndex = books.length
 
           console.log("API Chat: Livros encontrados:", books.length)
           console.log("API Chat: Primeiro livro:", books[0]?.title)
+          console.log("API Chat: Primeiro livro tem recommendationReason?", books[0]?.recommendationReason)
+          console.log("API Chat: Primeiro livro matchesInterests?", books[0]?.matchesInterests)
         } else {
           const errorText = await booksRes.text()
           console.error("API Chat: Erro na API do Google Books:", booksRes.status, errorText)
@@ -676,7 +963,60 @@ export async function POST(req: Request) {
       data?.choices?.[0]?.message?.content ??
       "Não consegui gerar uma resposta neste momento. Tente novamente."
 
-    // Retornar resposta do Groq (apenas quando não há busca de livros ou quando não há livros encontrados)
+    // NUNCA retornar mensagens de texto quando há busca de livros
+    // Se chegou aqui e needsBookSearch é true, significa que não conseguiu fazer a busca
+    // Nesse caso, tentar inferir contexto e perguntar
+    if (needsBookSearch && groqApiKey) {
+      try {
+        const cleanedMessage = lastMessage
+          .toLowerCase()
+          .replace(/\b(livros?|libros?|recomendar|recomendaci[oó]n|buscar|comprar|sobre|de|com|um|uma|el|la|los|las)\b/gi, "")
+          .trim()
+        
+        if (cleanedMessage.length > 0) {
+          const contextPrompt = `Extraia o termo principal desta mensagem. Apenas o termo em 1-3 palavras ou 'N/A'.
+
+Mensagem: "${cleanedMessage}"
+
+Termo:`
+          
+          const contextRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${groqApiKey}`,
+            },
+            body: JSON.stringify({
+              model: "llama-3.1-8b-instant",
+              messages: [
+                { role: "system", content: "Você extrai termos principais. Responda apenas com o termo em 1-3 palavras ou 'N/A'." },
+                { role: "user", content: contextPrompt }
+              ],
+              temperature: 0.3,
+              max_tokens: 20,
+            }),
+          })
+
+          if (contextRes.ok) {
+            const contextData = await contextRes.json()
+            const inferredTopic = contextData?.choices?.[0]?.message?.content?.trim() || ""
+            
+            if (inferredTopic && inferredTopic.toLowerCase() !== "n/a" && inferredTopic.length > 0 && inferredTopic.length < 50) {
+              return NextResponse.json({
+                reply: `Você gostaria de livros sobre ${inferredTopic}?`,
+                books: [],
+                needsConfirmation: true,
+                inferredTopic: inferredTopic,
+              })
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Erro ao inferir tema:", error)
+      }
+    }
+
+    // Retornar resposta do Groq apenas para conversas gerais (não relacionadas a busca de livros)
     return NextResponse.json({
       reply: reply,
       books: books || [],

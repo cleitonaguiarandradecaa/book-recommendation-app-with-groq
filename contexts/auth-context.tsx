@@ -185,6 +185,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const removed = removeRecommendation(bookId);
     if (removed) {
       loadRecommendations();
+      // Se o livro estiver nos favoritos, remover também
+      if (isFavorite(bookId)) {
+        removeFavorite(bookId);
+        const favs = getFavorites();
+        setFavorites(favs);
+      }
     }
     return removed;
   };

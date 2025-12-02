@@ -34,6 +34,8 @@ interface Book {
   buyLink?: string;
   previewLink?: string;
   rating?: number;
+  matchesInterests?: boolean; // Se o livro corresponde aos interesses do onboarding
+  recommendationReason?: string; // Descrição gerada pela IA explicando por que foi recomendado
 }
 
 interface Message {
@@ -45,6 +47,24 @@ interface Message {
   searchTerms?: string; // Termos de busca usados para esta mensagem
   hasMoreBooks?: boolean; // Se há mais livros disponíveis
   nextStartIndex?: number; // Próximo índice para carregar mais
+  needsConfirmation?: boolean; // Se precisa de confirmação do usuário
+  inferredTopic?: string; // Tema inferido da mensagem
+}
+
+// Mapeamento de interesses para nomes em português
+const interestToPortuguese: Record<string, string> = {
+  fantasy: "fantasia",
+  scifi: "ficção científica",
+  romance: "romance",
+  mystery: "mistério",
+  thriller: "thriller",
+  history: "história",
+  biography: "biografia",
+  psychology: "psicologia",
+  business: "negócios",
+  selfhelp: "autoajuda",
+  poetry: "poesia",
+  adventure: "aventura",
 }
 
 export default function ChatPage() {
@@ -165,6 +185,8 @@ export default function ChatPage() {
         searchTerms: data.searchTerms, // Termos de busca usados
         hasMoreBooks: data.hasMoreBooks, // Se há mais livros
         nextStartIndex: data.nextStartIndex, // Próximo índice
+        needsConfirmation: data.needsConfirmation, // Se precisa de confirmação
+        inferredTopic: data.inferredTopic, // Tema inferido
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
@@ -230,6 +252,92 @@ export default function ChatPage() {
                   </div>
                 )}
 
+              {/* Botões de confirmação Sim/Não */}
+              {message.needsConfirmation && message.inferredTopic && (
+                <div className="mt-3 flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="default"
+                    className="rounded-full"
+                    onClick={async () => {
+                      const searchMessage = `livros sobre ${message.inferredTopic}`
+                      // Enviar mensagem automaticamente
+                      const userMessage: Message = {
+                        id: Date.now().toString(),
+                        role: "user",
+                        content: searchMessage,
+                        timestamp: new Date(),
+                      }
+                      setMessages((prev) => [...prev, userMessage])
+                      setIsLoading(true)
+
+                      try {
+                        const response = await fetch("/api/chat", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            messages: [...messages, userMessage].map((m) => ({
+                              role: m.role,
+                              content: m.content,
+                            })),
+                            onboarding,
+                            userRecommendations: recommendations,
+                            userReadingPlans: readingPlans,
+                          }),
+                        })
+
+                        if (!response.ok) {
+                          throw new Error("Erro ao chamar /api/chat")
+                        }
+
+                        const data = await response.json()
+
+                        const hasBooks = data.books && data.books.length > 0
+                        const replyContent = hasBooks ? "" : (data.reply?.trim() || "Não consegui gerar uma resposta neste momento.")
+                        
+                        const assistantMessage: Message = {
+                          id: (Date.now() + 1).toString(),
+                          role: "assistant",
+                          content: replyContent,
+                          timestamp: new Date(),
+                          books: data.books || [],
+                          searchTerms: data.searchTerms,
+                          hasMoreBooks: data.hasMoreBooks,
+                          nextStartIndex: data.nextStartIndex,
+                          needsConfirmation: data.needsConfirmation,
+                          inferredTopic: data.inferredTopic,
+                        }
+
+                        setMessages((prev) => [...prev, assistantMessage])
+                      } catch (error) {
+                        console.error(error)
+                        toast({
+                          title: "Erro",
+                          description: "Não foi possível processar sua mensagem",
+                          variant: "destructive",
+                        })
+                      } finally {
+                        setIsLoading(false)
+                      }
+                    }}
+                  >
+                    Sim
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="rounded-full"
+                    onClick={() => {
+                      // Manter apenas a primeira mensagem (mensagem inicial do assistente)
+                      // Isso garante que messages.length === 1 e o botão "Recomendar um livro" apareça
+                      setMessages((prev) => prev.slice(0, 1))
+                    }}
+                  >
+                    Não
+                  </Button>
+                </div>
+              )}
+
               {/* Exibir livros se houver */}
               {(message.books && message.books.length > 0) ||
               (message.hasMoreBooks && message.searchTerms) ? (
@@ -278,6 +386,17 @@ export default function ChatPage() {
                                       }).format(book.price.amount)}
                                     </p>
                                   )}
+                                  {/* Seção de recomendação - mostrar para todos os livros que têm recommendationReason */}
+                                  {book.recommendationReason && (
+                                    <div className="mt-3 p-3 rounded-lg bg-primary/10 border border-primary/20">
+                                      <p className="text-sm font-semibold text-primary mb-1">
+                                        Por que recomendamos este livro?
+                                      </p>
+                                      <p className="text-xs text-muted-foreground leading-relaxed">
+                                        {book.recommendationReason}
+                                      </p>
+                                    </div>
+                                  )}
                                 </div>
                                 <div className="flex flex-wrap gap-2">
                                   <Button
@@ -323,11 +442,30 @@ export default function ChatPage() {
                                     onClick={async () => {
                                       try {
                                         // Salvar no localStorage do usuário via contexto
+                                        // Usar a descrição gerada pela IA se disponível, senão criar uma genérica
+                                        // Se o livro corresponde aos interesses mas não tem recommendationReason, gerar uma descrição básica
+                                        let recommendationReason = book.recommendationReason
+                                        
+                                        if (!recommendationReason && book.matchesInterests && onboarding && onboarding.interests.length > 0) {
+                                          const interestsText = onboarding.interests
+                                            .map((interest) => interestToPortuguese[interest] || interest)
+                                            .join(", ")
+                                          recommendationReason = `Este livro combina perfeitamente com seus interesses de leitura: ${interestsText}. Uma escolha ideal para você!`
+                                        }
+                                        
+                                        if (!recommendationReason) {
+                                          recommendationReason = "Recomendado do chat"
+                                        }
+
                                         const added = addRecommendation({
                                           ...book,
                                           genre: book.genre || "Sem gênero",
-                                          reason: "Recomendado do chat",
-                                          level: "Intermediário",
+                                          reason: recommendationReason,
+                                          level: onboarding?.readerLevel === "beginner" 
+                                            ? "Iniciante" 
+                                            : onboarding?.readerLevel === "intermediate" 
+                                            ? "Intermediário" 
+                                            : "Avançado",
                                         });
 
                                         if (added) {
@@ -419,16 +557,6 @@ export default function ChatPage() {
                                 </div>
                               </div>
                             </div>
-                            {/* Container para a sinopse abaixo das informações */}
-                            {book.description && (
-                              <div className="px-4 pb-4 pt-3 border-t bg-muted/20">
-                                <p className="text-sm text-muted-foreground leading-relaxed">
-                                  {book.description.length > 300
-                                    ? `${book.description.substring(0, 300)}...`
-                                    : book.description}
-                                </p>
-                              </div>
-                            )}
                           </div>
                         ))}
                     </>
@@ -520,6 +648,7 @@ export default function ChatPage() {
             </div>
           )}
 
+          {/* Mostrar quick actions apenas na abertura do chat (quando há apenas 1 mensagem) */}
           {messages.length === 1 && (
             <div className="space-y-3 pt-4">
               <p className="text-center text-sm text-muted-foreground">

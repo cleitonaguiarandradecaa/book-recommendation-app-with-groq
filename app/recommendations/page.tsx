@@ -102,7 +102,7 @@ export default function RecommendationsPage() {
                       </p>
                       <div className="flex flex-wrap gap-2">
                         {book.reason && (
-                          <span className="inline-flex items-center rounded-full bg-success/10 px-2 py-1 text-xs text-[color:var(--success)]">
+                          <span className="inline-flex items-center rounded-md bg-success/10 px-2 py-1 text-xs text-[color:var(--success)]">
                             {book.reason}
                           </span>
                         )}
