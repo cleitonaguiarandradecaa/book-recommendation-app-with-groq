@@ -25,6 +25,7 @@ import {
   isBookInReadingPlan,
   updateReadingPlan,
   updatePlanStep,
+  removeReadingPlan,
   updateUserName,
   addFavorite,
   removeFavorite,
@@ -55,6 +56,7 @@ interface AuthContextType {
   refreshRecommendations: () => void;
   addToReadingPlan: (book: Recommendation) => boolean;
   isInReadingPlan: (bookId: string) => boolean;
+  removeFromReadingPlan: (planId: string) => boolean;
   refreshReadingPlans: () => void;
   toggleFavorite: (book: Recommendation) => boolean;
   isBookFavorite: (bookId: string) => boolean;
@@ -213,6 +215,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setReadingPlans(plans);
   };
 
+  const removeFromReadingPlan = (planId: string): boolean => {
+    const removed = removeReadingPlan(planId);
+    if (removed) {
+      const plans = getReadingPlans();
+      setReadingPlans(plans);
+    }
+    return removed;
+  };
+
   const toggleFavorite = (book: Recommendation): boolean => {
     const isFav = isFavorite(book.id);
     if (isFav) {
@@ -261,6 +272,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     refreshRecommendations,
     addToReadingPlan,
     isInReadingPlan,
+    removeFromReadingPlan,
     refreshReadingPlans,
     toggleFavorite,
     isBookFavorite,

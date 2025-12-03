@@ -116,6 +116,35 @@ const interestToSearchTerm: Record<string, string> = {
   adventure: "aventura",
 }
 
+// Função para verificar se um livro é adequado para o nível de leitor
+function isBookAppropriateForLevel(
+  book: { pages?: number; description?: string },
+  readerLevel: "beginner" | "intermediate" | "advanced"
+): boolean {
+  const pages = book.pages || 0
+
+  switch (readerLevel) {
+    case "beginner":
+      // Iniciantes: livros com até 300 páginas (preferencialmente mais curtos)
+      // Se não houver informação de páginas, aceitar (mas priorizar os que têm)
+      return pages === 0 || pages <= 300
+
+    case "intermediate":
+      // Intermediários: livros entre 150-600 páginas (margem flexível)
+      // Se não houver informação de páginas, aceitar
+      return pages === 0 || (pages >= 150 && pages <= 600)
+
+    case "advanced":
+      // Avançados: livros com 300+ páginas (podem ser mais longos e complexos)
+      // Se não houver informação de páginas, aceitar
+      return pages === 0 || pages >= 300
+
+    default:
+      // Se o nível não for reconhecido, aceitar todos
+      return true
+  }
+}
+
 // Mapeamento de interesses para português
 const interestToPortuguese: Record<string, string> = {
   fantasy: "fantasia",
@@ -464,7 +493,7 @@ export async function POST(req: Request) {
           .toLowerCase()
           .replace(/\b(livros?|libros?|recomendar|recomendaci[oó]n|buscar|comprar|sobre|de|com|um|uma|el|la|los|las)\b/gi, "")
           .trim()
-        
+
         if (cleanedMessage.length > 0) {
           const contextPrompt = `Analise a seguinte mensagem do usuário e extraia o termo principal/tema sobre o qual ele está falando. 
 Responda APENAS com o termo principal em 1-3 palavras, sem explicações.
@@ -495,7 +524,7 @@ Termo principal/tema:`
           if (contextRes.ok) {
             const contextData = await contextRes.json()
             const inferredTopic = contextData?.choices?.[0]?.message?.content?.trim() || ""
-            
+
             // Se conseguiu inferir um tema válido (não é "N/A" e tem conteúdo)
             if (inferredTopic && inferredTopic.toLowerCase() !== "n/a" && inferredTopic.length > 0 && inferredTopic.length < 50) {
               return NextResponse.json({
@@ -531,19 +560,19 @@ Termo principal/tema:`
         const isSimpleRecommendation = simpleRecommendationPatterns.some(pattern =>
           pattern.test(trimmedMessage)
         )
-        
+
         // Verificar se a mensagem contém "livros" mas é ambígua (ex: "livros dragon ball z")
         // NÃO perguntar se a mensagem já contém "livros sobre [tema]" - isso indica uma busca direta após confirmação
         const hasBookKeyword = /livros?|libros?/i.test(lastMessage)
         const isDirectSearchAfterConfirmation = /livros?\s+sobre/i.test(lastMessage)
-        
+
         if (hasBookKeyword && !isSimpleRecommendation && !isDirectSearchAfterConfirmation && groqApiKey) {
           try {
             const cleanedMessage = lastMessage
               .toLowerCase()
               .replace(/\b(livros?|libros?|recomendar|recomendaci[oó]n|buscar|comprar|sobre|de|com|um|uma|el|la|los|las)\b/gi, "")
               .trim()
-            
+
             if (cleanedMessage.length > 0) {
               const contextPrompt = `Extraia o termo principal/tema desta mensagem. Apenas o tema em 1-3 palavras, sem explicações.
 Se não conseguir identificar, responda "N/A".
@@ -551,7 +580,7 @@ Se não conseguir identificar, responda "N/A".
 Mensagem: "${cleanedMessage}"
 
 Termo:`
-              
+
               const contextRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
                 method: "POST",
                 headers: {
@@ -572,7 +601,7 @@ Termo:`
               if (contextRes.ok) {
                 const contextData = await contextRes.json()
                 const inferredTopic = contextData?.choices?.[0]?.message?.content?.trim() || ""
-                
+
                 if (inferredTopic && inferredTopic.toLowerCase() !== "n/a" && inferredTopic.length > 0 && inferredTopic.length < 50) {
                   // Retornar pergunta de confirmação
                   return NextResponse.json({
@@ -748,7 +777,16 @@ Termo:`
           const recommendedBookIds = new Set(userRecommendations.map((r) => String(r.id)))
           const readingPlanBookIds = new Set(userReadingPlans.map((p) => String(p.bookId)))
           const excludedBookIds = new Set([...recommendedBookIds, ...readingPlanBookIds])
-          const filteredBooks = allBooks.filter((book: any) => !excludedBookIds.has(book.id))
+          let filteredBooks = allBooks.filter((book: any) => !excludedBookIds.has(book.id))
+
+          // Filtrar livros por nível de leitor (se onboarding estiver completo)
+          if (onboarding && onboarding.readerLevel) {
+            const beforeLevelFilter = filteredBooks.length
+            filteredBooks = filteredBooks.filter((book: any) =>
+              isBookAppropriateForLevel(book, onboarding.readerLevel as "beginner" | "intermediate" | "advanced")
+            )
+            console.log(`API Chat: Filtro por nível (${onboarding.readerLevel}): ${beforeLevelFilter} -> ${filteredBooks.length} livros`)
+          }
 
           // Se não temos 5 livros após filtrar, buscar mais para completar
           const targetCount = 5
@@ -798,7 +836,15 @@ Termo:`
               })
 
               // Filtrar os novos livros também (excluindo os que estão nas recomendações ou no plano de leitura)
-              const newFilteredBooks = additionalBooks.filter((book: any) => !excludedBookIds.has(book.id))
+              let newFilteredBooks = additionalBooks.filter((book: any) => !excludedBookIds.has(book.id))
+
+              // Filtrar por nível de leitor também
+              if (onboarding && onboarding.readerLevel) {
+                newFilteredBooks = newFilteredBooks.filter((book: any) =>
+                  isBookAppropriateForLevel(book, onboarding.readerLevel as "beginner" | "intermediate" | "advanced")
+                )
+              }
+
               filteredBooks.push(...newFilteredBooks)
               startIndex += additionalData.items?.length || 0
               additionalFetches++
@@ -820,7 +866,7 @@ Termo:`
             console.log("API Chat: Gerando descrições de recomendação para todos os livros...")
             console.log("API Chat: Total de livros:", books.length)
             console.log("API Chat: Livros com matchesInterests:", books.filter((b: any) => b.matchesInterests).length)
-            
+
             const booksWithRecommendations = await Promise.all(
               books.map(async (book: any) => {
                 // Gerar descrição para todos os livros, não apenas os que correspondem aos interesses
@@ -972,14 +1018,14 @@ Termo:`
           .toLowerCase()
           .replace(/\b(livros?|libros?|recomendar|recomendaci[oó]n|buscar|comprar|sobre|de|com|um|uma|el|la|los|las)\b/gi, "")
           .trim()
-        
+
         if (cleanedMessage.length > 0) {
           const contextPrompt = `Extraia o termo principal desta mensagem. Apenas o termo em 1-3 palavras ou 'N/A'.
 
 Mensagem: "${cleanedMessage}"
 
 Termo:`
-          
+
           const contextRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
             method: "POST",
             headers: {
@@ -1000,7 +1046,7 @@ Termo:`
           if (contextRes.ok) {
             const contextData = await contextRes.json()
             const inferredTopic = contextData?.choices?.[0]?.message?.content?.trim() || ""
-            
+
             if (inferredTopic && inferredTopic.toLowerCase() !== "n/a" && inferredTopic.length > 0 && inferredTopic.length < 50) {
               return NextResponse.json({
                 reply: `Você gostaria de livros sobre ${inferredTopic}?`,

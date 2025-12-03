@@ -214,8 +214,8 @@ export default function ProfilePage() {
 
     if (!onboarding) {
       toast({
-        title: "Error",
-        description: "No hay datos de onboarding para actualizar",
+        title: "Erro",
+        description: "Não há dados de onboarding para atualizar",
         variant: "destructive",
       })
       return
@@ -229,16 +229,16 @@ export default function ProfilePage() {
     updateOnboarding(updatedOnboarding)
     setIsEditingInterests(false)
     toast({
-      title: "Guardado",
-        description: "Gêneros atualizados corretamente",
+      title: "Salvo",
+      description: "Gêneros atualizados corretamente",
     })
   }
 
   const handleSaveReadingTime = () => {
     if (!onboarding) {
       toast({
-        title: "Error",
-        description: "No hay datos de onboarding para actualizar",
+        title: "Erro",
+        description: "Não há dados de onboarding para atualizar",
         variant: "destructive",
       })
       return
@@ -252,8 +252,8 @@ export default function ProfilePage() {
     updateOnboarding(updatedOnboarding)
     setIsEditingReadingTime(false)
     toast({
-      title: "Guardado",
-        description: "Tempo de leitura atualizado corretamente",
+      title: "Salvo",
+      description: "Tempo de leitura atualizado corretamente",
     })
   }
 
@@ -269,8 +269,8 @@ export default function ProfilePage() {
 
     if (!onboarding) {
       toast({
-        title: "Error",
-        description: "No hay datos de onboarding para actualizar",
+        title: "Erro",
+        description: "Não há dados de onboarding para atualizar",
         variant: "destructive",
       })
       return
@@ -284,7 +284,7 @@ export default function ProfilePage() {
     updateOnboarding(updatedOnboarding)
     setIsEditingLevel(false)
     toast({
-      title: "Guardado",
+      title: "Salvo",
       description: "Nível de leitura atualizado corretamente",
     })
   }
@@ -333,7 +333,7 @@ export default function ProfilePage() {
                     value={editedName}
                     onChange={(e) => setEditedName(e.target.value)}
                     className="text-center text-2xl font-bold h-auto py-2"
-                    placeholder="Nombre"
+                    placeholder="Nome"
                   />
                   <div className="flex items-center justify-center gap-2">
                     <Button
@@ -556,14 +556,16 @@ export default function ProfilePage() {
                                 ? "Iniciante"
                                 : onboarding.readerLevel === "intermediate"
                                   ? "Intermediário"
-                                  : "Avançado"}
+                                  : onboarding.readerLevel === "advanced"
+                                    ? "Avançado"
+                                    : "Não definido"}
                             </span>
                             <Button
                               variant="ghost"
                               size="sm"
                               className="h-6 w-6 rounded-full p-0"
                               onClick={() => {
-                                setEditedLevel(onboarding.readerLevel)
+                                setEditedLevel(onboarding.readerLevel || null)
                                 setIsEditingLevel(true)
                               }}
                             >
@@ -578,7 +580,7 @@ export default function ProfilePage() {
                               className="h-6 w-6 rounded-full p-0"
                               onClick={() => {
                                 setIsEditingLevel(false)
-                                setEditedLevel(onboarding.readerLevel)
+                                setEditedLevel(onboarding.readerLevel || null)
                               }}
                             >
                               <X className="h-3 w-3" strokeWidth={1.5} />

@@ -38,6 +38,7 @@ export interface PlanStep {
   title: string
   description?: string
   pages?: string
+  estimatedMinutes?: number
   completed: boolean
   completedAt?: string
 }
@@ -348,6 +349,22 @@ export function addBookToReadingPlan(book: Recommendation): boolean {
 export function getReadingPlans(): ReadingPlan[] {
   const userData = getUserData()
   return userData?.readingPlans || []
+}
+
+export function removeReadingPlan(planId: string): boolean {
+  const userData = getUserData()
+  if (!userData || !userData.readingPlans) {
+    return false
+  }
+
+  const index = userData.readingPlans.findIndex((p) => p.id === planId)
+  if (index === -1) {
+    return false
+  }
+
+  userData.readingPlans.splice(index, 1)
+  saveUserData(userData)
+  return true
 }
 
 export function isBookInReadingPlan(bookId: string): boolean {

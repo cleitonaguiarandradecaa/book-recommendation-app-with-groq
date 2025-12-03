@@ -28,36 +28,62 @@ export async function POST(req: Request) {
     // Criar prompt para gerar plano de leitura
     const readingTime = onboarding?.readingTime || 30
     const level = onboarding?.readerLevel || "intermediate"
-    const levelText = level === "beginner" ? "principiante" 
-      : level === "intermediate" ? "intermedio" 
-      : "avanzado"
+    const levelText = level === "beginner" ? "iniciante" 
+      : level === "intermediate" ? "intermediário" 
+      : "avançado"
 
-    const systemPrompt = `Eres un asistente literario especializado en crear planes de lectura personalizados.
-Debes crear un plan de lectura estructurado para el libro "${book.title}" de ${book.author}.
-El libro tiene ${book.totalPages} páginas.
-El usuario tiene ${readingTime} minutos diarios disponibles para leer y su nivel es ${levelText}.
+    // Calcular velocidade de leitura baseada no nível (páginas por minuto)
+    // Iniciante: ~1 página/minuto, Intermediário: ~2 páginas/minuto, Avançado: ~3 páginas/minuto
+    const pagesPerMinute = level === "beginner" ? 1 : level === "intermediate" ? 2 : 3
+    const pagesPerSession = Math.floor(readingTime * pagesPerMinute)
+    const estimatedDays = Math.ceil(book.totalPages / pagesPerSession)
+    const estimatedMinutesPerStep = Math.ceil(pagesPerSession / pagesPerMinute)
 
-IMPORTANTE: Responde SOLO con un JSON válido en el siguiente formato, sin texto adicional:
+    const systemPrompt = `Você é um assistente literário especializado em criar planos de leitura personalizados.
+Você deve criar um plano de leitura estruturado para o livro "${book.title}" de ${book.author}.
+O livro tem ${book.totalPages} páginas.
+O usuário tem ${readingTime} minutos diários disponíveis para ler e seu nível é ${levelText}.
+
+CÁLCULOS IMPORTANTES:
+- Velocidade de leitura estimada: ${pagesPerMinute} página(s) por minuto (baseado no nível ${levelText})
+- Páginas que podem ser lidas por sessão: aproximadamente ${pagesPerSession} páginas em ${readingTime} minutos
+- Tempo estimado para cada etapa: ${estimatedMinutesPerStep} minutos
+- Número estimado de dias para completar: ${estimatedDays} dias
+
+IMPORTANTE: Responda APENAS com um JSON válido no seguinte formato, sem texto adicional:
 {
   "steps": [
     {
       "id": "step_1",
-      "title": "Título de la etapa",
-      "description": "Descripción de qué leer en esta etapa",
-      "pages": "1-50"
+      "title": "Título da etapa",
+      "description": "Descrição do que ler nesta etapa",
+      "pages": "1-50",
+      "estimatedMinutes": ${estimatedMinutesPerStep}
     }
   ]
 }
 
-Crea entre 8 y 12 etapas que dividan el libro de forma lógica, considerando:
-- El tiempo disponible del usuario (${readingTime} minutos/día)
-- El nivel de lectura (${levelText})
-- Divisiones naturales por capítulos o secciones temáticas
-- Progresión gradual de dificultad si aplica
+REGRAS PARA DIVIDIR O LIVRO:
+1. Cada etapa deve representar aproximadamente ${pagesPerSession} páginas (o que pode ser lido em ${readingTime} minutos)
+2. O número total de etapas deve ser aproximadamente ${estimatedDays} (uma etapa por dia)
+3. Divida o livro de forma lógica, respeitando:
+   - Divisões naturais por capítulos ou seções temáticas
+   - Progressão gradual de dificuldade (se aplicável)
+   - Pausas naturais na narrativa
+4. Se um capítulo for muito longo (mais de ${pagesPerSession * 1.5} páginas), divida-o em múltiplas etapas
+5. Se um capítulo for muito curto (menos de ${Math.floor(pagesPerSession * 0.5)} páginas), combine com o próximo
+6. Cada etapa deve ter um título descritivo e uma descrição clara do que será lido
+7. O campo "estimatedMinutes" deve refletir o tempo real estimado para ler aquela quantidade de páginas (baseado em ${pagesPerMinute} página/minuto)
 
-Cada etapa debe tener un título descriptivo y una descripción clara de qué se leerá.`
+EXEMPLO DE CÁLCULO:
+- Se uma etapa tem 30 páginas e a velocidade é 2 páginas/minuto, então estimatedMinutes = 15 minutos
+- Se uma etapa tem 60 páginas e a velocidade é 2 páginas/minuto, então estimatedMinutes = 30 minutos
 
-    const userMessage = `Crea un plan de lectura para "${book.title}" de ${book.author} (${book.totalPages} páginas).`
+Crie um plano que seja realista e respeite o tempo disponível do usuário.`
+
+    const userMessage = `Crie um plano de leitura para "${book.title}" de ${book.author} (${book.totalPages} páginas).
+O usuário tem ${readingTime} minutos por dia disponíveis e pode ler aproximadamente ${pagesPerSession} páginas por sessão.
+Divida o livro em etapas que respeitem essa capacidade de leitura diária.`
 
     const messages: ChatMessage[] = [
       { role: "system", content: systemPrompt },
@@ -82,7 +108,7 @@ Cada etapa debe tener un título descriptivo y una descripción clara de qué se
       const errorText = await groqRes.text()
       console.error("Error de Groq:", groqRes.status, errorText)
       return NextResponse.json(
-        { error: "Error al generar el plan de lectura" },
+        { error: "Erro ao gerar o plano de leitura" },
         { status: 500 }
       )
     }
@@ -93,37 +119,68 @@ Cada etapa debe tener un título descriptivo y una descripción clara de qué se
     try {
       const planData = JSON.parse(reply)
       
-      // Transformar os steps para incluir completed: false
-      const steps = (planData.steps || []).map((step: any, index: number) => ({
-        id: step.id || `step_${index + 1}`,
-        title: step.title || `Etapa ${index + 1}`,
-        description: step.description || "",
-        pages: step.pages || "",
-        completed: false,
-      }))
+      // Transformar os steps para incluir completed: false e estimatedMinutes
+      const steps = (planData.steps || []).map((step: any, index: number) => {
+        // Calcular estimatedMinutes se não foi fornecido pela LLM
+        let estimatedMinutes = step.estimatedMinutes
+        if (!estimatedMinutes && step.pages) {
+          // Extrair número de páginas do formato "X-Y" ou "X"
+          const pagesMatch = step.pages.match(/(\d+)(?:-(\d+))?/)
+          if (pagesMatch) {
+            const startPage = parseInt(pagesMatch[1])
+            const endPage = pagesMatch[2] ? parseInt(pagesMatch[2]) : startPage
+            const pageCount = endPage - startPage + 1
+            estimatedMinutes = Math.ceil(pageCount / pagesPerMinute)
+          } else {
+            estimatedMinutes = estimatedMinutesPerStep
+          }
+        } else if (!estimatedMinutes) {
+          estimatedMinutes = estimatedMinutesPerStep
+        }
+
+        return {
+          id: step.id || `step_${index + 1}`,
+          title: step.title || `Etapa ${index + 1}`,
+          description: step.description || "",
+          pages: step.pages || "",
+          estimatedMinutes: estimatedMinutes,
+          completed: false,
+        }
+      })
 
       return NextResponse.json({ steps })
     } catch (parseError) {
       console.error("Error parsing plan:", parseError)
-      // Fallback: criar plano básico
-      const pagesPerStep = Math.ceil(book.totalPages / 10)
-      const steps = Array.from({ length: 10 }, (_, i) => ({
-        id: `step_${i + 1}`,
-        title: `Etapa ${i + 1}`,
-        description: `Lee las páginas ${i * pagesPerStep + 1} a ${Math.min((i + 1) * pagesPerStep, book.totalPages)}`,
-        pages: `${i * pagesPerStep + 1}-${Math.min((i + 1) * pagesPerStep, book.totalPages)}`,
-        completed: false,
-      }))
+      // Fallback: criar plano básico considerando o tempo disponível
+      const pagesPerStep = pagesPerSession
+      const totalSteps = Math.ceil(book.totalPages / pagesPerStep)
+      const steps = Array.from({ length: totalSteps }, (_, i) => {
+        const startPage = i * pagesPerStep + 1
+        const endPage = Math.min((i + 1) * pagesPerStep, book.totalPages)
+        const stepPageCount = endPage - startPage + 1
+        const stepEstimatedMinutes = Math.ceil(stepPageCount / pagesPerMinute)
+        
+        return {
+          id: `step_${i + 1}`,
+          title: `Etapa ${i + 1}`,
+          description: `Leia as páginas ${startPage} a ${endPage}`,
+          pages: `${startPage}-${endPage}`,
+          estimatedMinutes: stepEstimatedMinutes,
+          completed: false,
+        }
+      })
 
       return NextResponse.json({ steps })
     }
   } catch (error) {
     console.error("Error generating reading plan:", error)
-    return NextResponse.json(
-      { error: "Error al generar el plan de lectura" },
-      { status: 500 }
-    )
+      return NextResponse.json(
+        { error: "Erro ao gerar o plano de leitura" },
+        { status: 500 }
+      )
   }
 }
+
+
 
 

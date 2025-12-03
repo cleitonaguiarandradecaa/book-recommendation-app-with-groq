@@ -1,5 +1,34 @@
 import { NextResponse } from "next/server"
 
+// Função para verificar se um livro é adequado para o nível de leitor
+function isBookAppropriateForLevel(
+  book: { pages?: number; description?: string },
+  readerLevel: "beginner" | "intermediate" | "advanced"
+): boolean {
+  const pages = book.pages || 0
+
+  switch (readerLevel) {
+    case "beginner":
+      // Iniciantes: livros com até 300 páginas (preferencialmente mais curtos)
+      // Se não houver informação de páginas, aceitar (mas priorizar os que têm)
+      return pages === 0 || pages <= 300
+
+    case "intermediate":
+      // Intermediários: livros entre 150-600 páginas (margem flexível)
+      // Se não houver informação de páginas, aceitar
+      return pages === 0 || (pages >= 150 && pages <= 600)
+
+    case "advanced":
+      // Avançados: livros com 300+ páginas (podem ser mais longos e complexos)
+      // Se não houver informação de páginas, aceitar
+      return pages === 0 || pages >= 300
+
+    default:
+      // Se o nível não for reconhecido, aceitar todos
+      return true
+  }
+}
+
 // Mapeamento de interesses para termos de busca
 const interestToSearchTerm: Record<string, string> = {
   fantasy: "fantasía",
@@ -77,9 +106,9 @@ export async function POST(req: Request) {
         rating: volumeInfo.averageRating,
         price: price
           ? {
-              amount: price.amount,
-              currency: price.currencyCode || "USD",
-            }
+            amount: price.amount,
+            currency: price.currencyCode || "USD",
+          }
           : undefined,
         buyLink: saleInfo.buyLink,
         previewLink: volumeInfo.previewLink || volumeInfo.infoLink,
@@ -89,6 +118,15 @@ export async function POST(req: Request) {
 
     // Filtrar livros que já estão nas recomendações ou no plano de leitura
     bookCategories = bookCategories.filter((book: any) => !excludedBookIds.has(book.id))
+
+    // Filtrar livros por nível de leitor (se onboarding estiver completo)
+    if (onboarding && onboarding.readerLevel) {
+      const beforeLevelFilter = bookCategories.length
+      bookCategories = bookCategories.filter((book: any) =>
+        isBookAppropriateForLevel(book, onboarding.readerLevel as "beginner" | "intermediate" | "advanced")
+      )
+      console.log(`API Load More: Filtro por nível (${onboarding.readerLevel}): ${beforeLevelFilter} -> ${bookCategories.length} livros`)
+    }
 
     // Se não temos 5 livros após filtrar, buscar mais para completar
     const targetCount = 5
@@ -131,9 +169,9 @@ export async function POST(req: Request) {
             rating: volumeInfo.averageRating,
             price: price
               ? {
-                  amount: price.amount,
-                  currency: price.currencyCode || "USD",
-                }
+                amount: price.amount,
+                currency: price.currencyCode || "USD",
+              }
               : undefined,
             buyLink: saleInfo.buyLink,
             previewLink: volumeInfo.previewLink || volumeInfo.infoLink,
@@ -142,7 +180,15 @@ export async function POST(req: Request) {
         })
 
         // Filtrar os novos livros também (excluindo os que estão nas recomendações ou no plano de leitura)
-        const newFilteredBooks = additionalBooks.filter((book: any) => !excludedBookIds.has(book.id))
+        let newFilteredBooks = additionalBooks.filter((book: any) => !excludedBookIds.has(book.id))
+
+        // Filtrar por nível de leitor também
+        if (onboarding && onboarding.readerLevel) {
+          newFilteredBooks = newFilteredBooks.filter((book: any) =>
+            isBookAppropriateForLevel(book, onboarding.readerLevel as "beginner" | "intermediate" | "advanced")
+          )
+        }
+
         bookCategories.push(...newFilteredBooks)
         currentStartIndex += additionalData.items?.length || 0
         additionalFetches++

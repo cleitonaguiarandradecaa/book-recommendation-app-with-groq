@@ -2,17 +2,18 @@
 
 import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
-import { ChevronLeft, CheckCircle2, Circle, Loader2, Target } from "lucide-react"
+import { ChevronLeft, CheckCircle2, Circle, Loader2, Target, Trash2 } from "lucide-react"
 import Link from "next/link"
-import { useParams } from "next/navigation"
+import { useParams, useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth-context"
 import { updatePlanStep, updateReadingPlan, type PlanStep, type ReadingPlan } from "@/lib/auth"
 import { toast } from "@/hooks/use-toast"
 
 export default function ReadingPlanDetailPage() {
   const params = useParams()
+  const router = useRouter()
   const planId = params?.id as string
-  const { onboarding, refreshReadingPlans } = useAuth()
+  const { onboarding, refreshReadingPlans, removeFromReadingPlan } = useAuth()
   const [plan, setPlan] = useState<ReadingPlan | null>(null)
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
@@ -182,11 +183,34 @@ export default function ReadingPlanDetailPage() {
               <ChevronLeft className="h-5 w-5" />
             </button>
           </Link>
-          <div className="flex items-center gap-2">
-            <Target className="h-5 w-5 text-primary" strokeWidth={1.5} />
-            <span className="text-sm font-medium">
-              {completedSteps}/{totalSteps} completadas
-            </span>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <Target className="h-5 w-5 text-primary" strokeWidth={1.5} />
+              <span className="text-sm font-medium">
+                {completedSteps}/{totalSteps} completadas
+              </span>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-9 rounded-full text-destructive hover:bg-destructive hover:text-destructive-foreground"
+              onClick={() => {
+                if (confirm(`Tem certeza que deseja remover "${plan.title}" do seu plano de leitura?`)) {
+                  const removed = removeFromReadingPlan(plan.id)
+                  if (removed) {
+                    toast({
+                      title: "Removido",
+                      description: "O livro foi removido do seu plano de leitura.",
+                    })
+                    // Redirecionar para a página de planos
+                    router.push("/reading-plan")
+                  }
+                }
+              }}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Remover
+            </Button>
           </div>
         </div>
       </header>
@@ -275,6 +299,11 @@ export default function ReadingPlanDetailPage() {
                           )}
                           {step.pages && (
                             <p className="mt-2 text-xs font-medium text-primary">Páginas: {step.pages}</p>
+                          )}
+                          {step.estimatedMinutes && (
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              ⏱️ Tempo estimado: {step.estimatedMinutes} min
+                            </p>
                           )}
                         </div>
                         <span className="text-xs font-medium text-muted-foreground">Etapa {index + 1}</span>
